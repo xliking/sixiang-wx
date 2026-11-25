@@ -211,17 +211,9 @@
     });
   }
 
-  // 原底部栏已全部迁移为主地图左上角4枚小图片挂件！子页面底部仅保留清爽【◀ 返回九州征战】按钮
-  function drawBottomNav(ctx, active) {
-    if (!active || active === 'map') return;
-    const W = App.Platform.LOGICAL_W;
-    const H = App.Platform.LOGICAL_H;
-    App.UI.drawButton(ctx, W / 2 - 104, H - 52, 208, 40, '◀ 返回《群英志》主地图', {
-      r: 20,
-      grad: ['#b45309', '#78350f'],
-      border: '#fef08a',
-      fontSize: 13,
-    }, () => App.Main.goScene('map'));
+  // 子页面已全面统一为右上角【✕】关闭圆章按钮与满屏对称布局，不再绘制冗余底部返回条
+  function drawBottomNav() {
+    // no-op: kept for backward-compatibility
   }
 
   // 顶部双排紧凑古风圆章入口（40px 精致尺寸 + 统一鎏金圆盘底座，绝不遮挡下方任何城池关隘！）
@@ -1134,7 +1126,7 @@
 
     // 2. 上半区：5 个出战将领槽位 + 1 个随军神兽槽
     const slotLabels = ['先锋主将', '次锋猛将', '中军统帅', '左翼奇兵', '后军压阵'];
-    const rarityColors = { UR: '#facc15', SSR: '#fb923c', SR: '#c084fc', R: '#38bdf8' };
+    const rarityColors = { SSS: '#f43f5e', SS: '#facc15', S: '#c084fc', A: '#38bdf8', B: '#4ade80' };
     const slotStartX = mx + 12;
     const slotY = my + 55;
     const slotW = 139;
@@ -1169,13 +1161,14 @@
         ctx.textAlign = 'left';
         ctx.fillText(`${i + 1}号·${slotLabels[i] || '出战'}`, sx + 8, slotY + 15);
 
+        const slotRarDisp = App.Config.getRarityLabel ? App.Config.getRarityLabel(gid, stats) : g.rarity;
         ctx.fillStyle = troopMeta.bg || '#78350f';
-        App.UI.roundRect(ctx, sx + slotW - 44, slotY + 4, 38, 14, 4);
+        App.UI.roundRect(ctx, sx + slotW - 50, slotY + 4, 44, 14, 4);
         ctx.fill();
         ctx.fillStyle = troopMeta.color || '#fef08a';
-        ctx.font = 'bold 8.5px "PingFang SC", sans-serif';
+        ctx.font = 'bold 8px "PingFang SC", sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(`${g.rarity}·${troopMeta.short}`, sx + slotW - 25, slotY + 14);
+        ctx.fillText(`${slotRarDisp}·${troopMeta.short}`, sx + slotW - 28, slotY + 14, 42);
 
         // 右侧武将名、星级等级与战力
         ctx.textAlign = 'left';
@@ -1372,14 +1365,15 @@
 
       App.Portraits.drawGeneralPortrait(ctx, gid, cx + 8, cy + 10, 50, { radius: 7, border: rarCol, lineWidth: 1.5 });
 
+      const cardRarDisp = App.Config.getRarityLabel ? App.Config.getRarityLabel(gid, stats) : g.rarity;
       ctx.save();
       ctx.fillStyle = troopMeta.bg || '#78350f';
-      App.UI.roundRect(ctx, cx + 8, cy + 64, 50, 15, 4);
+      App.UI.roundRect(ctx, cx + 6, cy + 64, 54, 15, 4);
       ctx.fill();
       ctx.fillStyle = troopMeta.color || '#fef08a';
-      ctx.font = 'bold 8.5px "PingFang SC", sans-serif';
+      ctx.font = 'bold 8px "PingFang SC", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`${g.rarity}·${troopMeta.short}`, cx + 33, cy + 75);
+      ctx.fillText(`${cardRarDisp}·${troopMeta.short}`, cx + 33, cy + 75, 50);
 
       ctx.textAlign = 'left';
       ctx.fillStyle = inLineup ? '#fef08a' : (stats && stats.isRented ? '#0f766e' : '#451a03');

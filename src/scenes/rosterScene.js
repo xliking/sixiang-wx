@@ -151,20 +151,20 @@
     const sorted = cachedSorted;
     if (!selectedGid || !App.Config.GENERALS[selectedGid]) selectedGid = sorted[0];
 
-    // 左侧：名将分页列表（全量收录 800 位独立立绘名将与守将！）
-    App.UI.drawPanel(ctx, 14, 62, 220, 412, { r: 12, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
+    // 左侧：名将分页列表（全量收录 800 位独立立绘名将与守将！满高铺展至 y=532）
+    App.UI.drawPanel(ctx, 14, 58, 220, 474, { r: 12, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
     ctx.save();
     ctx.fillStyle = '#451a03';
     ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
     ctx.textAlign = 'left';
     const totalOwnedCnt = Object.keys(st.ownedGenerals || {}).length + Object.keys(hostedMap).length;
-    ctx.fillText(`聚义 ${totalOwnedCnt}/${fullIds.length}将 · 阵${st.deployIds.length}/5`, 22, 83);
+    ctx.fillText(`聚义 ${totalOwnedCnt}/${fullIds.length}将 · 阵${st.deployIds.length}/5`, 22, 80);
     ctx.restore();
-    App.UI.drawButton(ctx, 174, 68, 52, 20, showAll800 ? '全图鉴' : '仅核心', {
+    App.UI.drawButton(ctx, 174, 65, 52, 20, showAll800 ? '全图鉴' : '仅核心', {
       r: 5, bg: showAll800 ? '#15803d' : '#78350f', border: '#fef08a', fontSize: 9.5,
     }, () => { showAll800 = !showAll800; listPage = 0; });
 
-    const perPage = 8;
+    const perPage = 9;
     const maxPage = Math.max(0, Math.ceil(sorted.length / perPage) - 1);
     listPage = Math.min(listPage, maxPage);
     const slice = sorted.slice(listPage * perPage, listPage * perPage + perPage);
@@ -175,10 +175,10 @@
       const rented = !owned && App.State.getActiveRented ? App.State.getActiveRented(gid) : null;
       const hosted = !owned && !rented ? hostedMap[gid] : null;
       const effNode = owned || rented || hosted;
-      const ascTag = effNode && effNode.ascend === 'xian' ? '[仙]' : (effNode && effNode.ascend === 'mo' ? '[魔]' : '');
+      const ascTag = effNode && effNode.ascend === 'xian' ? '[神]' : (effNode && effNode.ascend === 'mo' ? '[魔]' : '');
       const deployed = st.deployIds.includes(gid);
       const isSel = gid === selectedGid;
-      const y = 94 + idx * 42;
+      const y = 92 + idx * 43;
 
       App.UI.drawButton(ctx, 22, y, 204, 36, '', {
         r: 16,
@@ -225,7 +225,19 @@
       ctx.restore();
     });
 
-    App.UI.drawPagination(ctx, 20, 437, 208, 27, listPage, maxPage + 1, (p) => { listPage = p; });
+    App.UI.drawButton(ctx, 20, 488, 56, 30, '◀ 上页', {
+      r: 7, bg: '#5c2c16', border: '#d4a34b', fontSize: 10.5, disabled: listPage <= 0,
+    }, () => { listPage = Math.max(0, listPage - 1); });
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#451a03';
+    ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
+    ctx.fillText(`${listPage + 1} / ${maxPage + 1}`, 124, 503);
+    ctx.restore();
+    App.UI.drawButton(ctx, 172, 488, 56, 30, '下页 ▶', {
+      r: 7, bg: '#5c2c16', border: '#d4a34b', fontSize: 10.5, disabled: listPage >= maxPage,
+    }, () => { listPage = Math.min(maxPage, listPage + 1); });
 
     // 右侧：英雄详情 + 单人英雄战力 + 【仙魔飞升 / 挂牌出租 / 流放武将】 + 6格穿戴装备
     const g = App.Config.GENERALS[selectedGid];
@@ -245,7 +257,7 @@
     const activeSetVfx = equipSetVfx || (effAscInfo ? effAscInfo.auraVfx : null);
     const activeWeaponVfx = App.Config.resolveWeaponVfx ? App.Config.resolveWeaponVfx(eqMap.weapon) : null;
 
-    App.UI.drawPanel(ctx, 242, 62, W - 256, 412, { r: 12, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
+    App.UI.drawPanel(ctx, 242, 58, W - 256, 474, { r: 12, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
     if (activeSetVfx && App.Sprites.drawUiSetAura) {
       App.Sprites.drawUiSetAura(ctx, 300, 120, 52, activeSetVfx, time);
     }
@@ -268,10 +280,13 @@
     ctx.textAlign = 'center';
     ctx.fillText(`统兵·${selTroopMeta.name}`, 300, 159);
 
-    ctx.fillStyle = '#451a03';
-    ctx.font = 'bold 14px "PingFang SC", sans-serif';
+    const selRarLabel = App.Config.getRarityLabel
+      ? App.Config.getRarityLabel(selectedGid, owned || rented || hosted)
+      : g.rarity;
+    ctx.fillStyle = effAscInfo ? (effAscInfo.path === 'xian' ? '#0c4a6e' : '#581c87') : '#451a03';
+    ctx.font = 'bold 13.5px "PingFang SC", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`[${g.rarity}] ${g.name}`, 300, 180, 96);
+    ctx.fillText(`[${selRarLabel}] ${g.name}`, 300, 180, 98);
     ctx.fillStyle = effAscInfo ? (effAscInfo.path === 'xian' ? '#0369a1' : '#9333ea') : '#b91c1c';
     ctx.font = 'bold 11px "PingFang SC", sans-serif';
     ctx.fillText(effAscInfo ? `✦${effAscInfo.title}·战${stats.power}` : `英雄战力 ${stats.power}`, 300, 196, 98);
@@ -297,7 +312,7 @@
         App.State.upgradeGeneral(selectedGid, 1);
       });
 
-      App.UI.drawButton(ctx, 254, 255, 92, 23, atAbsMax ? '满级可飞升' : (atLordCap ? '升主公破限' : '⚡ 连升 10 级'), {
+      App.UI.drawButton(ctx, 254, 255, 92, 23, atAbsMax ? '满级可封神' : (atLordCap ? '升主公破限' : '⚡ 连升 10 级'), {
         r: 6, grad: ['#ea580c', '#9a3412'], border: '#fef08a', fontSize: 10, disabled: atLordCap,
       }, () => {
         App.State.upgradeGeneral(selectedGid, 10);
@@ -310,10 +325,10 @@
         App.State.starUpGeneral(selectedGid);
       });
 
-      // ★ 150级【仙魔飞升】按钮（未满150级也可点击查看渡劫条件与直达升仙/升魔副本！）
+      // ★ 150级【神魔飞升】按钮（未满150级也可点击查看渡劫条件与直达成神/成魔副本！）
       const ascBtnLabel = owned.ascend === 'xian'
-        ? `✦ 仙·${owned.ascendTier || 1}重突破`
-        : (owned.ascend === 'mo' ? `🔥 魔·${owned.ascendTier || 1}重突破` : '✦ 仙魔飞升');
+        ? `✦ 神·${owned.ascendTier || 1}重突破`
+        : (owned.ascend === 'mo' ? `🔥 魔·${owned.ascendTier || 1}重突破` : '✦ 神魔飞升');
       const ascGrad = owned.ascend === 'xian'
         ? ['#0284c7', '#0c4a6e']
         : (owned.ascend === 'mo' ? ['#a21caf', '#581c87'] : (owned.lv >= ascReqLv ? ['#0891b2', '#6d28d9'] : ['#475569', '#334155']));
@@ -374,47 +389,48 @@
       ctx.restore();
     }
 
-    // 英雄属性与专属技能栏（紧凑排布，给下方双排装备与分页腾出充裕空间）
-    App.UI.drawPanel(ctx, 356, 70, 578, 80, { r: 8, bg: '#7c5c3e', border: '#4a2c16', lineWidth: 1.5 });
+    // 英雄属性与专属技能栏 + 右上角 ✕ 关闭圆章按钮
+    App.UI.drawPanel(ctx, 356, 68, 536, 82, { r: 8, bg: '#7c5c3e', border: '#4a2c16', lineWidth: 1.5 });
+    App.UI.drawCloseButton(ctx, W - 56, 70, 32, () => App.Main.goScene('map'));
     ctx.save();
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fef08a';
     ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
-    ctx.fillText(`${g.title} · 默认兵种【${selTroopMeta.name}·固定】  绝技【${g.skillName}】：${g.skillDesc}`, 368, 88, 554);
+    ctx.fillText(`${g.title} · 【${selTroopMeta.name}】  绝技【${g.skillName}】：${g.skillDesc}`, 368, 86, 514);
 
     const drawStatPill = (label, baseVal, bonusVal, x, y) => {
       ctx.fillStyle = '#fde68a'; ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
       ctx.fillText(label, x, y);
       ctx.fillStyle = '#3b2614';
-      App.UI.roundRect(ctx, x + 35, y - 12, 126, 17, 5);
+      App.UI.roundRect(ctx, x + 34, y - 12, 118, 17, 5);
       ctx.fill();
       ctx.fillStyle = '#f8fafc'; ctx.font = 'bold 11px sans-serif';
-      ctx.fillText(`${baseVal}`, x + 43, y);
+      ctx.fillText(`${baseVal}`, x + 41, y);
       if (bonusVal > 0) {
         ctx.fillStyle = '#4ade80';
-        ctx.fillText(`+${bonusVal}`, x + 95, y);
+        ctx.fillText(`+${bonusVal}`, x + 90, y);
       }
     };
-    drawStatPill('气血', stats.baseHp, stats.bonusHp, 368, 113);
-    drawStatPill('武力', stats.baseAtk, stats.bonusAtk, 550, 113);
-    drawStatPill('防御', stats.baseDef, stats.bonusDef, 732, 113);
+    drawStatPill('气血', stats.baseHp, stats.bonusHp, 368, 112);
+    drawStatPill('武力', stats.baseAtk, stats.bonusAtk, 534, 112);
+    drawStatPill('防御', stats.baseDef, stats.bonusDef, 700, 112);
     drawStatPill('暴击', `${Math.round(stats.crit * 100)}%`, 0, 368, 138);
     ctx.fillStyle = '#fde047';
     ctx.font = 'bold 11px "PingFang SC", sans-serif';
     const lvDesc = owned
       ? `Lv.${owned.lv}/${absMaxLv}·${owned.star}★${effAscInfo ? '·' + effAscInfo.shortTag : ''}`
       : (rented ? `佣·Lv.${rented.lv}·${rented.star}★` : (hosted ? `托管·Lv.${hosted.lv}·${hosted.star}★` : '未招降'));
-    ctx.fillText(`战力：${stats.power} (${lvDesc})`, 550, 138, 192);
+    ctx.fillText(`战力：${stats.power} (${lvDesc})`, 534, 138, 176);
     ctx.restore();
 
-    App.UI.drawButton(ctx, 746, 122, 82, 23, '⚔ 兵刃演示', {
-      r: 6, grad: activeWeaponVfx ? ['#7e22ce', '#4c1d95'] : ['#57534e', '#292524'], border: activeWeaponVfx ? '#f5d0fe' : '#fde68a', fontSize: 10.5,
+    App.UI.drawButton(ctx, 718, 122, 80, 23, '⚔ 兵刃演示', {
+      r: 6, grad: activeWeaponVfx ? ['#7e22ce', '#4c1d95'] : ['#57534e', '#292524'], border: activeWeaponVfx ? '#f5d0fe' : '#fde68a', fontSize: 10,
     }, () => {
       launchWeaponPreview(selectedGid);
     });
 
-    App.UI.drawButton(ctx, 834, 122, 90, 23, '✦ 绝技演示', {
-      r: 6, grad: ['#b45309', '#78350f'], border: '#fef08a', fontSize: 10.5,
+    App.UI.drawButton(ctx, 804, 122, 80, 23, '✦ 绝技演示', {
+      r: 6, grad: ['#b45309', '#78350f'], border: '#fef08a', fontSize: 10,
     }, () => {
       launchSkillPreview(selectedGid);
     });
@@ -430,15 +446,15 @@
       ? ` · 异象【${equipSetVfx.auraName}】`
       : (effAscInfo ? ` · 道果法相【${effAscInfo.auraVfx.auraName}】` : '');
     const resHint = topSet && topSet.resonanceActive
-      ? ` · ★${topSet.ascendAffinity === 'xian' ? '仙道' : '魔道'}共鸣+${Math.round((topSet.resonancePct || 0.12) * 100)}%`
+      ? ` · ★${topSet.ascendAffinity === 'xian' ? '神道' : '魔道'}共鸣+${Math.round((topSet.resonancePct || 0.12) * 100)}%`
       : (topSet && topSet.ascendAffinity && topSet.count >= topSet.total
-        ? `(${topSet.ascendAffinity === 'xian' ? '升仙' : '入魔'}再享+12%共鸣)`
+        ? `(${topSet.ascendAffinity === 'xian' ? '成神' : '成魔'}再享+12%共鸣)`
         : '');
     const setSummary = topSet
       ? `套装【${topSet.name}】(${topSet.count}/${topSet.total})${resHint}${auraHint}${wfxHint}`
       : (effAscInfo
-        ? `已修成【${effAscInfo.title}】全属性+${Math.round((effAscInfo.statMult - 1) * 100)}%${auraHint}${wfxHint}`
-        : `穿戴 76 套神装/仙魔套装或满 ${ascReqLv} 级飞升仙魔激活法相异象${wfxHint}`);
+        ? `已晋升【${selRarLabel}·${effAscInfo.realm}】全属性+${Math.round((effAscInfo.statMult - 1) * 100)}%${auraHint}${wfxHint}`
+        : `穿戴 76 套神装/神魔套装或满 ${ascReqLv} 级成神/成魔激活法相异象${wfxHint}`);
     ctx.fillText(setSummary, 368, 170, 554);
     ctx.restore();
 
@@ -532,8 +548,8 @@
       }
     }
 
-    // 底部快捷穿戴栏（小巧 52×52 图标 × 上下 2 排 × 每排 8 件 = 每页 16 件 + 底部页码直选分页条！）
-    App.UI.drawPanel(ctx, 356, 250, 578, 218, { r: 8, bg: '#7c5c3e', border: '#4a2c16', lineWidth: 1.5 });
+    // 底部快捷穿戴栏（纵深拓展至 y=522，消除底部留白）
+    App.UI.drawPanel(ctx, 356, 250, 578, 272, { r: 8, bg: '#7c5c3e', border: '#4a2c16', lineWidth: 1.5 });
     if (curRev !== cachedBagRev) {
       cachedBagRev = curRev;
       cachedUnequipped = st.inventory.filter((i) => {
@@ -550,16 +566,20 @@
     ctx.save();
     ctx.fillStyle = '#fef08a';
     ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
-    ctx.fillText(`快捷穿戴 (${unequipped.length}件闲置 · 点击一键穿戴，批量出售管理请点下方【军备仓库】)`, 368, 267, 554);
+    ctx.fillText(`快捷穿戴 (${unequipped.length}件闲置 · 点击一键穿戴)`, 368, 270, 360);
     ctx.restore();
 
-    const bagIconSz = 52;
+    App.UI.drawButton(ctx, 842, 255, 84, 22, '去军备仓库', {
+      r: 5, grad: ['#b45309', '#78350f'], border: '#fde68a', fontSize: 10,
+    }, () => App.Main.goScene('warehouse'));
+
+    const bagIconSz = 56;
     if (!unequipped.length) {
       ctx.save();
       ctx.fillStyle = '#fde68a';
-      ctx.font = '12.5px "PingFang SC", sans-serif';
+      ctx.font = '13px "PingFang SC", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('当前暂无闲置装备，攻城掠地、扫荡关卡或开启宝箱可源源不断获得神装！', 645, 355);
+      ctx.fillText('当前暂无闲置装备，攻城掠地、扫荡关卡或开启宝箱可获得神装！', 645, 386);
       ctx.restore();
     } else {
       unequipped.slice(bagPage * bagPerPage, (bagPage + 1) * bagPerPage).forEach((eq, idx) => {
@@ -568,10 +588,10 @@
         const col = idx % bagCols;
         const row = Math.floor(idx / bagCols);
         const ix = 368 + col * 70;
-        const iy = 275 + row * 76;
+        const iy = 284 + row * 94;
 
         App.Sprites.drawEquipIcon(ctx, tpl.id, ix, iy, bagIconSz, {
-          radius: 7, border: q.color, lineWidth: 1.8,
+          radius: 8, border: q.color, lineWidth: 1.8,
           enhance: eq.enhance, star: eq.star, advance: eq.advance, time,
         });
         ctx.save();
@@ -583,7 +603,7 @@
         ctx.fillText(`${tpl.name.slice(0, 4)}+${eq.enhance}`, ix + bagIconSz / 2, iy + bagIconSz - 5.5, bagIconSz - 4);
         ctx.fillStyle = '#bbf7d0';
         ctx.font = 'bold 9.5px "PingFang SC", sans-serif';
-        ctx.fillText('点击穿戴', ix + bagIconSz / 2, iy + bagIconSz + 12);
+        ctx.fillText('点击穿戴', ix + bagIconSz / 2, iy + bagIconSz + 13);
         ctx.restore();
 
         App.UI.addHit(ix, iy, bagIconSz, bagIconSz + 18, () => {
@@ -593,9 +613,9 @@
       });
     }
 
-    App.UI.drawPagination(ctx, 368, 436, 554, 25, bagPage, maxBagPage + 1, (p) => { bagPage = p; });
-
-    App.Scenes.map.drawBottomNav(ctx, 'roster');
+    if (maxBagPage > 0) {
+      App.UI.drawPagination(ctx, 368, 482, 554, 28, bagPage, maxBagPage + 1, (p) => { bagPage = p; });
+    }
 
     // ★ 800名将独门绝技实景沙场演武厅（真实武将骑乘出招 + 敌军受击反馈 + 原画级绝技特效 + 右上/底部/遮罩三重关闭）
     if (previewFx) {
@@ -1016,12 +1036,13 @@
     App.UI.drawPanel(ctx, mx + 7, my + 7, mw - 14, mh - 14, { r: 12, bg: 'rgba(30, 18, 42, 0.78)', border: 'rgba(250, 204, 21, 0.28)', lineWidth: 1.2 });
 
     // 顶部标题匾额
-    App.UI.drawPanel(ctx, W / 2 - 208, my - 20, 416, 42, { r: 21, bg: '#4c1d95', border: '#fef08a', lineWidth: 2.2 });
+    const modalRarLabel = App.Config.getRarityLabel ? App.Config.getRarityLabel(gid, owned) : g.rarity;
+    App.UI.drawPanel(ctx, W / 2 - 224, my - 20, 448, 42, { r: 21, bg: '#4c1d95', border: '#fef08a', lineWidth: 2.2 });
     ctx.save();
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fef08a';
-    ctx.font = 'bold 18px "PingFang SC", serif';
-    ctx.fillText(`✦ 仙魔渡劫台 · ${g.name} (Lv.${owned.lv}/${reqLv})`, W / 2, my + 6);
+    ctx.font = 'bold 17.5px "PingFang SC", serif';
+    ctx.fillText(`✦ 神魔封神台 · [${modalRarLabel}] ${g.name} (Lv.${owned.lv}/${reqLv})`, W / 2, my + 6, 426);
     ctx.restore();
 
     App.UI.drawButton(ctx, mx + mw - 88, my + 14, 72, 28, '✕ 关闭', {
@@ -1041,51 +1062,51 @@
     ctx.fillStyle = '#fef08a';
     ctx.font = 'bold 12.5px "PingFang SC", sans-serif';
     if (ascInfo) {
-      ctx.fillText(`当前道果：【${ascInfo.title}】(${curTier}/${maxTier}重)  ·  全三维属性 +${Math.round((ascInfo.statMult - 1) * 100)}%`, mx + 76, my + 49);
+      ctx.fillText(`当前神魔品阶：【${modalRarLabel} · ${ascInfo.realm}】(${curTier}/${maxTier}重)  ·  全三维属性 +${Math.round((ascInfo.statMult - 1) * 100)}%`, mx + 76, my + 49);
       ctx.fillStyle = '#cbd5e1';
       ctx.font = '11px "PingFang SC", sans-serif';
-      ctx.fillText('继续消耗同道丹髓可突破更高仙/魔重数，亦可通关另一副本后消耗丹髓【洗髓转修】互换仙魔大道！', mx + 76, my + 68, mw - 208);
+      ctx.fillText('继续消耗同道丹髓可突破更高神/魔重数，亦可通关另一副本后消耗丹髓【洗髓转修】互换神魔大道！', mx + 76, my + 68, mw - 208);
     } else {
       ctx.fillText(
         lvReady
-          ? `✓ 已达满级 Lv.${reqLv}！通关对应【升仙副本 / 升魔副本】并集齐丹髓，即可择道飞升！`
-          : `渡劫门槛：需先将 ${g.name} 升至满级 Lv.${reqLv}（当前 Lv.${owned.lv}，还差 ${reqLv - owned.lv} 级）`,
+          ? `✓ 已达满级 Lv.${reqLv}！通关对应【成神副本 / 成魔副本】并集齐丹髓，即可晋升 ${g.rarity}.神 或 ${g.rarity}.魔！`
+          : `封神门槛：需先将 ${g.name} 升至满级 Lv.${reqLv}（当前 Lv.${owned.lv}，还差 ${reqLv - owned.lv} 级）`,
         mx + 76, my + 49, mw - 208
       );
       ctx.fillStyle = lvReady ? '#86efac' : '#fde68a';
       ctx.font = '11px "PingFang SC", sans-serif';
-      ctx.fillText('提示：飞升后解锁专属仙罡/魔煞光环、巨幅三维倍率与流派法则，挂牌【聚贤佣馆】出租更受追捧！', mx + 76, my + 68, mw - 208);
+      ctx.fillText(`提示：成神晋升【${g.rarity}.神】、成魔晋升【${g.rarity}.魔】，解锁神罡/魔煞光环与巨幅三维倍率！`, mx + 76, my + 68, mw - 208);
     }
     ctx.restore();
 
     const paths = [
       {
         id: 'xian',
-        title: '✦ 天道升仙 · 九天真仙',
-        dgTitle: '升仙副本（九天仙台）',
+        title: `✦ 天道成神 · 晋升【${g.rarity}.神】`,
+        dgTitle: '成神副本（九天封神台）',
         bg: '#082f49',
         border: '#38bdf8',
         headBg: '#0369a1',
         accent: '#67e8f9',
         pillId: ac.xianPillItem || 'ascend_xian_pill',
         subId: ac.xianSubItem || 'ascend_xian_jade',
-        lore1: '全属性飞跃：1~5重提升 +28% / +40% / +52% / +64% / +76%',
-        lore2: '仙道法则：伤害减免+8%~20% · 绝技增伤+12%~32% · 开局灵气+15~35',
-        lore3: '沙场异象：脚踏【九天仙罡】清辉灵阵，先手开大、万法不侵',
+        lore1: '全属性飞跃：1~5重提升 +35% / +50% / +65% / +80% / +95%',
+        lore2: '神道法则：伤害减免+9%~21% · 绝技增伤+14%~34% · 开局神力+16~36',
+        lore3: '沙场异象：脚踏【九天神罡】清辉神阵，先手开大、万法不侵',
         btnGrad: ['#0284c7', '#0c4a6e'],
       },
       {
         id: 'mo',
-        title: '✦ 魔道入魔 · 九幽魔尊',
-        dgTitle: '升魔副本（幽冥魔渊）',
+        title: `✦ 魔道成魔 · 晋升【${g.rarity}.魔】`,
+        dgTitle: '成魔副本（幽冥魔渊）',
         bg: '#2e1065',
         border: '#e879f9',
         headBg: '#86198f',
         accent: '#f472b6',
         pillId: ac.moPillItem || 'ascend_mo_pill',
         subId: ac.moSubItem || 'ascend_mo_crystal',
-        lore1: '全属性飞跃：1~5重提升 +28% / +40% / +52% / +64% / +76%',
-        lore2: '魔道法则：暴击伤害+18%~46% · 嗜血汲取+7%~19% · 狂魔攻速+10%~26%',
+        lore1: '全属性飞跃：1~5重提升 +35% / +50% / +65% / +80% / +95%',
+        lore2: '魔道法则：暴击伤害+20%~48% · 嗜血汲取+8%~20% · 狂魔攻速+11%~27%',
         lore3: '沙场异象：身披【九幽魔煞】血影战阵，刀刀暴击、以战养战',
         btnGrad: ['#a21caf', '#581c87'],
       },
@@ -1118,8 +1139,8 @@
 
       const havePill = App.State.getItemCount(p.pillId);
       const haveSub = App.State.getItemCount(p.subId);
-      const pillName = (App.Config.ITEMS[p.pillId] && App.Config.ITEMS[p.pillId].name) || (p.id === 'xian' ? '九转飞仙丹' : '九幽化魔丹');
-      const subName = (App.Config.ITEMS[p.subId] && App.Config.ITEMS[p.subId].name) || (p.id === 'xian' ? '太清仙灵髓' : '炼狱魔煞晶');
+      const pillName = (App.Config.ITEMS[p.pillId] && App.Config.ITEMS[p.pillId].name) || (p.id === 'xian' ? '九转封神丹' : '九幽化魔丹');
+      const subName = (App.Config.ITEMS[p.subId] && App.Config.ITEMS[p.subId].name) || (p.id === 'xian' ? '太初神灵髓' : '炼狱魔煞晶');
 
       App.UI.drawPanel(ctx, cx, cy, cardW, cardH, {
         r: 12,
@@ -1209,13 +1230,13 @@
           grad: p.btnGrad,
           border: '#fef08a',
           fontSize: 13.5,
-          subText: maxReached ? '威震九州 · 仙魔绝巅' : '全属性+12% · 仙魔法则进阶',
+          subText: maxReached ? '威震九州 · 神魔绝巅' : '全属性+15% · 神魔法则进阶',
           disabled: maxReached,
         }, () => {
           App.State.ascendUpGeneral(gid);
         });
       } else if (isSwitch) {
-        App.UI.drawButton(ctx, cx + 32, cy + 262, cardW - 64, 44, `↻ 洗髓转修【${p.id === 'xian' ? '仙道' : '魔道'}】`, {
+        App.UI.drawButton(ctx, cx + 32, cy + 262, cardW - 64, 44, `↻ 洗髓转修【${p.id === 'xian' ? g.rarity + '.神' : g.rarity + '.魔'}】`, {
           r: 10,
           grad: p.btnGrad,
           border: '#fef08a',
@@ -1230,19 +1251,19 @@
         });
       } else {
         const canAscend = lvReady && dgCleared && havePill >= needPill && haveSub >= needSub && goldOk && soulOk;
-        const btnTxt = p.id === 'xian' ? '☁ 渡劫升仙' : '🔥 觉醒入魔';
+        const btnTxt = p.id === 'xian' ? `☁ 渡劫成神 (${g.rarity}.神)` : `🔥 觉醒成魔 (${g.rarity}.魔)`;
         const subTxt = !lvReady
           ? `需武将满 Lv.${reqLv}（当前 Lv.${owned.lv}）`
-          : (!dgCleared ? `需先通关${p.id === 'xian' ? '升仙副本' : '升魔副本'}` : '晋升一重 · 激活专属仙魔光环');
+          : (!dgCleared ? `需先通关${p.id === 'xian' ? '成神副本' : '成魔副本'}` : '晋升一重 · 激活专属神魔光环');
         App.UI.drawButton(ctx, cx + 32, cy + 262, cardW - 64, 44, btnTxt, {
           r: 10,
           grad: canAscend ? p.btnGrad : ['#475569', '#334155'],
           border: canAscend ? '#fef08a' : '#94a3b8',
-          fontSize: 14,
+          fontSize: 13.5,
           subText: subTxt,
         }, () => {
           if (!lvReady) {
-            App.UI.showToast(`请先将 ${g.name} 升至满级 Lv.${reqLv} 后再抉择升仙或升魔！`, '#fbbf24');
+            App.UI.showToast(`请先将 ${g.name} 升至满级 Lv.${reqLv} 后再抉择成神或成魔！`, '#fbbf24');
             return;
           }
           if (!dgCleared) {
@@ -1259,7 +1280,7 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = '#94a3b8';
       ctx.font = '10px "PingFang SC", sans-serif';
-      ctx.fillText(`材料出处：征战秘境 → 仙魔渡劫 → ${p.dgTitle}`, cx + cardW / 2, cy + 328);
+      ctx.fillText(`材料出处：征战秘境 → 神魔渡劫 → ${p.dgTitle}`, cx + cardW / 2, cy + 328);
       ctx.restore();
     });
   }

@@ -30,9 +30,9 @@
     ctx.fillRect(0, 0, W, H);
     App.Scenes.map.drawTopBar(ctx);
 
-    App.UI.drawPanel(ctx, 14, 62, W - 28, 412, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
+    App.UI.drawPanel(ctx, 14, 58, W - 28, 474, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
 
-    // 顶部分类栏（新增【套装图鉴(24套)】，并支持库存道具/214种道具图鉴切换！）
+    // 顶部分类栏 + 右上角 ✕ 关闭圆章按钮
     const totalSetsCnt = (App.Config.EQUIP_SET_IDS || []).length || 68;
     const cats = [
       { id: 'items', label: '宝箱道具' },
@@ -46,7 +46,7 @@
     ];
     cats.forEach((c, idx) => {
       const act = filterTab === c.id;
-      App.UI.drawButton(ctx, 22 + idx * 92, 74, 87, 32, c.label, {
+      App.UI.drawButton(ctx, 22 + idx * 88, 68, 84, 32, c.label, {
         r: 8,
         grad: act ? ['#b45309', '#78350f'] : ['#5c2c16', '#3d1c0d'],
         border: act ? '#fef08a' : '#a16207',
@@ -56,31 +56,33 @@
 
     if (filterTab === 'items') {
       const totalItemKinds = (App.Config.ITEM_IDS || []).length;
-      App.UI.drawButton(ctx, W - 194, 74, 170, 32, showItemCodex ? '◀ 返回我的库存道具' : `百宝图鉴 (${totalItemKinds}种)`, {
+      App.UI.drawButton(ctx, W - 224, 68, 154, 32, showItemCodex ? '◀ 返回库存道具' : `百宝图鉴 (${totalItemKinds}种)`, {
         r: 8,
         grad: showItemCodex ? ['#78350f', '#451a03'] : ['#16a34a', '#15803d'],
         border: showItemCodex ? '#fde047' : '#bbf7d0',
-        fontSize: 11,
+        fontSize: 10.5,
       }, () => {
         showItemCodex = !showItemCodex;
         itemPage = 0;
       });
     } else if (filterTab === 'sets') {
-      App.UI.drawButton(ctx, W - 194, 74, 170, 32, '前往铜钱商城搜集套装', {
+      App.UI.drawButton(ctx, W - 224, 68, 154, 32, '前往铜钱集市搜集', {
         r: 8, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 10.5,
       }, () => App.Main.goScene('shop'));
     } else {
-      App.UI.drawButton(ctx, W - 186, 74, 162, 32, '一键出售闲置蓝装', {
-        r: 8, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 11,
+      App.UI.drawButton(ctx, W - 224, 68, 154, 32, '一键出售闲置蓝装', {
+        r: 8, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 10.5,
       }, () => {
         selectedUid = null;
         App.State.sellAllBlueEquips();
       });
     }
 
-    // ================= 分支 A：【宝箱与道具】（库存严格隐藏0数量；图鉴模式支持浏览全214种道具！） =================
+    App.UI.drawCloseButton(ctx, W - 62, 68, 32, () => App.Main.goScene('map'));
+
+    // ================= 分支 A：【宝箱与道具】 =================
     if (filterTab === 'items') {
-      App.UI.drawPanel(ctx, 26, 114, 596, 346, { r: 10, bg: '#7c5c3e', border: '#4a2c16', lineWidth: 1.5 });
+      App.UI.drawPanel(ctx, 26, 108, 596, 412, { r: 10, bg: '#7c5c3e', border: '#4a2c16', lineWidth: 1.5 });
 
       let listIds = [];
       if (showItemCodex) {
@@ -185,10 +187,12 @@
         });
       }
 
-      App.UI.drawPagination(ctx, 42, 427, 564, 26, itemPage, maxItemPage + 1, (p) => { itemPage = p; });
+      if (maxItemPage > 0) {
+        App.UI.drawPagination(ctx, 42, 482, 564, 28, itemPage, maxItemPage + 1, (p) => { itemPage = p; });
+      }
 
       // 右侧：道具详情与使用/出售面板
-      App.UI.drawPanel(ctx, 634, 114, 300, 346, { r: 10, bg: '#ead4a2', border: '#7c4a21', lineWidth: 2 });
+      App.UI.drawPanel(ctx, 634, 108, 300, 412, { r: 10, bg: '#ead4a2', border: '#7c4a21', lineWidth: 2 });
       const cfg = selectedItemId ? App.Config.ITEMS[selectedItemId] : null;
       const cnt = selectedItemId ? App.State.getItemCount(selectedItemId) : 0;
       if (cfg) {
@@ -299,7 +303,7 @@
       const ownedTplSet = new Set((st.inventory || []).map((e) => e.tplId));
 
       // 左侧：套装筛选胶囊 + 分页名录
-      App.UI.drawPanel(ctx, 26, 114, 248, 346, { r: 10, bg: '#573b22', border: '#4a2c16', lineWidth: 1.5 });
+      App.UI.drawPanel(ctx, 26, 108, 248, 412, { r: 10, bg: '#573b22', border: '#4a2c16', lineWidth: 1.5 });
       const sTabs = [
         { id: 'all', label: '全部' },
         { id: 'blue', label: '蓝套' },
@@ -309,12 +313,12 @@
       ];
       sTabs.forEach((stItem, si) => {
         const on = setFilter === stItem.id;
-        App.UI.drawButton(ctx, 33 + si * 47, 120, 44, 22, stItem.label, {
+        App.UI.drawButton(ctx, 33 + si * 47, 116, 44, 22, stItem.label, {
           r: 6, grad: on ? ['#d97706', '#92400e'] : ['#3b2112', '#261409'], border: on ? '#fef08a' : '#78350f', fontSize: 9.5,
         }, () => { setFilter = stItem.id; setPage = 0; });
       });
 
-      const sPerPage = 6;
+      const sPerPage = 7;
       const maxSetPage = Math.max(0, Math.ceil(setIds.length / sPerPage) - 1);
       setPage = Math.min(setPage, maxSetPage);
       const sSlice = setIds.slice(setPage * sPerPage, (setPage + 1) * sPerPage);
@@ -324,9 +328,9 @@
         const q = App.Config.QUALITIES[sCfg.quality] || App.Config.QUALITIES.blue;
         const ownedCnt = sCfg.pieceIds.filter((pid) => ownedTplSet.has(pid)).length;
         const isSel = sid === selectedSetId;
-        const sy = 148 + idx * 45;
+        const sy = 146 + idx * 46;
 
-        App.UI.drawButton(ctx, 34, sy, 232, 39, '', {
+        App.UI.drawButton(ctx, 34, sy, 232, 40, '', {
           r: 8,
           grad: isSel ? ['#b45309', '#78350f'] : ['#3b2112', '#261409'],
           border: isSel ? '#fef08a' : q.color,
@@ -344,11 +348,11 @@
         ctx.restore();
       });
 
-      App.UI.drawPagination(ctx, 32, 424, 236, 26, setPage, maxSetPage + 1, (p) => { setPage = p; }, { bg: '#3b2112' });
+      App.UI.drawPagination(ctx, 32, 480, 236, 28, setPage, maxSetPage + 1, (p) => { setPage = p; }, { bg: '#3b2112' });
 
       // 右侧：选中套装的 6 件（或神兽 4 件）高清图标展示 + 套装共鸣属性词条！
       const curSet = App.Config.EQUIP_SETS[selectedSetId];
-      App.UI.drawPanel(ctx, 284, 114, 650, 346, { r: 10, bg: '#361c0d', border: '#d4a34b', lineWidth: 2 });
+      App.UI.drawPanel(ctx, 284, 108, 650, 412, { r: 10, bg: '#361c0d', border: '#d4a34b', lineWidth: 2 });
       if (curSet) {
         const q = App.Config.QUALITIES[curSet.quality];
         const ownedCnt = curSet.pieceIds.filter((pid) => ownedTplSet.has(pid)).length;
@@ -432,7 +436,7 @@
       selectedUid = filtered[0] ? filtered[0].uid : null;
     }
 
-    App.UI.drawPanel(ctx, 26, 114, 596, 346, { r: 10, bg: '#7c5c3e', border: '#4a2c16', lineWidth: 1.5 });
+    App.UI.drawPanel(ctx, 26, 108, 596, 412, { r: 10, bg: '#7c5c3e', border: '#4a2c16', lineWidth: 1.5 });
     const perPage = 18;
     const maxPage = Math.max(0, Math.ceil(filtered.length / perPage) - 1);
     page = Math.min(page, maxPage);
@@ -443,18 +447,18 @@
       ctx.fillStyle = '#fef3c7';
       ctx.font = '14px "PingFang SC", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('该分类暂无装备 — 开启宝箱、扫荡关卡或查看【24套神装】即可获取！', 324, 280);
+      ctx.fillText('该分类暂无装备 — 开启宝箱、扫荡关卡或查看神装图鉴即可获取！', 324, 300);
       ctx.restore();
     } else {
       items.forEach((eq, idx) => {
         const col = idx % 6;
         const row = Math.floor(idx / 6);
         const ix = 40 + col * 95;
-        const iy = 122 + row * 99;
+        const iy = 122 + row * 114;
         const tpl = App.Config.EQUIP_TEMPLATES[eq.tplId];
         const q = App.Config.QUALITIES[tpl.quality];
         const isSel = eq.uid === selectedUid;
-        const eqSz = 78;
+        const eqSz = 82;
 
         App.Sprites.drawEquipIcon(ctx, tpl.id, ix, iy, eqSz, {
           radius: 9, border: isSel ? '#ffffff' : q.color, lineWidth: isSel ? 3.2 : 2,
@@ -487,9 +491,11 @@
       });
     }
 
-    App.UI.drawPagination(ctx, 42, 427, 564, 26, page, maxPage + 1, (p) => { page = p; });
+    if (maxPage > 0) {
+      App.UI.drawPagination(ctx, 42, 482, 564, 28, page, maxPage + 1, (p) => { page = p; });
+    }
 
-    App.UI.drawPanel(ctx, 634, 114, 300, 346, { r: 10, bg: '#ead4a2', border: '#7c4a21', lineWidth: 2 });
+    App.UI.drawPanel(ctx, 634, 108, 300, 412, { r: 10, bg: '#ead4a2', border: '#7c4a21', lineWidth: 2 });
     const selEq = st.inventory.find((e) => e.uid === selectedUid);
     if (selEq) {
       const tpl = App.Config.EQUIP_TEMPLATES[selEq.tplId];

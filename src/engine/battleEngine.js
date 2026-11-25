@@ -1894,9 +1894,13 @@
 
     if (App.Audio) App.Audio.playSfx('ultimate');
     if (beastUnit.side === 'player' && App.Platform && App.Platform.vibrateShort) App.Platform.vibrateShort('heavy');
-    showBanner(battle, `四象降临 · ${bCfg.name}【${bCfg.skillName}】`, bCfg.skillDesc, bCfg.glow, null, beastUnit.id);
-    battle.shakeTimer = Math.max(battle.shakeTimer || 0, 0.45);
-    const elemMap = { qinglong: 'thunder', zhuque: 'fire', baihu: 'slash_crimson', xuanwu: 'ice' };
+    showBanner(battle, `${bCfg.tierName || '四象'}降临 · ${bCfg.name}【${bCfg.skillName}】`, bCfg.skillDesc, bCfg.glow, null, beastUnit.id);
+    battle.shakeTimer = Math.max(battle.shakeTimer || 0, 0.48);
+    const elemMap = {
+      qinglong: 'thunder', zhuque: 'fire', baihu: 'slash_crimson', xuanwu: 'ice',
+      taotie: 'slash_crimson', qiongqi: 'slash_crimson', taowu: 'fire', hundun: 'thunder',
+      qilin: 'fire', baize: 'ice', kunpeng: 'thunder', zhulong: 'fire',
+    };
     const focusX = targets[0] ? targets[0].x : (enemyTowers[0] ? enemyTowers[0].x : (battle.cameraX + App.Platform.LOGICAL_W / 2));
 
     battle.skillEffects.push({
@@ -1915,21 +1919,61 @@
     });
 
     const bSkillMult = 1 + (beastUnit.skillDmgPct || 0);
+    const dmgMultMap = {
+      baihu: 2.15, taotie: 2.05, qiongqi: 2.20, taowu: 1.95, hundun: 2.10,
+      qilin: 2.15, baize: 2.20, kunpeng: 2.32, zhulong: 2.55,
+    };
+    const stunMap = { qinglong: 1.6, xuanwu: 2.1, taowu: 2.3, hundun: 1.8, baize: 2.2, zhulong: 2.6 };
+    const hitMult = (dmgMultMap[beastUnit.id] || 1.70) * bSkillMult;
+    const stunDur = stunMap[beastUnit.id] || 0;
+
     targets.slice(0, 8).forEach((t) => {
-      dealDamage(battle, beastUnit, t, (beastUnit.id === 'baihu' ? 2.15 : 1.65) * bSkillMult, { fromSkill: true, sparkColor: bCfg.glow || '#fde047' });
-      if (t.alive && (beastUnit.id === 'qinglong' || beastUnit.id === 'xuanwu')) {
-        t.stunTimer = Math.max(t.stunTimer, 2.1);
+      dealDamage(battle, beastUnit, t, hitMult, { fromSkill: true, sparkColor: bCfg.glow || '#fde047' });
+      if (t.alive && stunDur > 0) {
+        t.stunTimer = Math.max(t.stunTimer, stunDur);
       }
     });
     enemyTowers.forEach((tw) => {
-      dealDamage(battle, beastUnit, tw, 1.35, { fromSkill: true, sparkColor: bCfg.glow || '#fde047' });
+      dealDamage(battle, beastUnit, tw, 1.45 * bSkillMult, { fromSkill: true, sparkColor: bCfg.glow || '#fde047' });
     });
 
-    if (beastUnit.id === 'zhuque') {
-      battle.units.filter((a) => a.alive && a.side === beastUnit.side).forEach((a) => {
-        const h = Math.round(a.maxHp * 0.24);
+    const allies = battle.units.filter((a) => a.alive && a.side === beastUnit.side && !a.isMainBase);
+    const healPctMap = { zhuque: 0.25, taotie: 0.24, qilin: 0.26 };
+    const shieldPctMap = { xuanwu: 0.30, taowu: 0.28, qilin: 0.24 };
+    const spdPctMap = { qinglong: 0.35, qiongqi: 0.40, kunpeng: 0.48 };
+    const rageGrantMap = { hundun: 25, baize: 30 };
+
+    if (healPctMap[beastUnit.id]) {
+      const hpct = healPctMap[beastUnit.id];
+      allies.forEach((a) => {
+        const h = Math.round(a.maxHp * hpct);
         a.hp = Math.min(a.maxHp, a.hp + h);
         addFloatText(battle, a.x, a.y - 52, `+${h}`, '#4ade80');
+      });
+    }
+    if (shieldPctMap[beastUnit.id]) {
+      const spct = shieldPctMap[beastUnit.id];
+      allies.forEach((a) => {
+        const sh = Math.round(a.maxHp * spct);
+        a.shieldHp = Math.max(a.shieldHp || 0, sh);
+        a.shieldTimer = Math.max(a.shieldTimer || 0, 8.0);
+        if (a.kind === 'general') addFloatText(battle, a.x, a.y - 68, `护盾+${sh}`, '#67e8f9');
+      });
+    }
+    if (spdPctMap[beastUnit.id]) {
+      const apct = spdPctMap[beastUnit.id];
+      allies.forEach((a) => {
+        a.spdBuffPct = Math.max(a.spdBuffPct || 0, apct);
+        a.spdBuffTimer = Math.max(a.spdBuffTimer || 0, 6.0);
+      });
+    }
+    if (rageGrantMap[beastUnit.id]) {
+      const rg = rageGrantMap[beastUnit.id];
+      allies.forEach((a) => {
+        if (a.kind === 'general') {
+          a.rage = Math.min(100, (a.rage || 0) + rg);
+          addFloatText(battle, a.x, a.y - 68, `怒气+${rg}`, '#fde047');
+        }
       });
     }
     checkBattleEnd(battle);
@@ -2698,7 +2742,11 @@
               onDetonate: () => {
                 if (!u.alive) return;
                 u.attackAnim = 1.0;
-                const elemMap = { qinglong: 'thunder', zhuque: 'fire', baihu: 'slash_crimson', xuanwu: 'ice' };
+                const elemMap = {
+                  qinglong: 'thunder', zhuque: 'fire', baihu: 'slash_crimson', xuanwu: 'ice',
+                  taotie: 'slash_crimson', qiongqi: 'slash_crimson', taowu: 'fire', hundun: 'thunder',
+                  qilin: 'fire', baize: 'ice', kunpeng: 'thunder', zhulong: 'fire',
+                };
                 battle.skillEffects.push({
                   beastId: u.spriteId || u.id,
                   casterName: u.name,
@@ -2713,7 +2761,7 @@
                   life: 1.55,
                   maxLife: 1.55,
                 });
-                showBanner(battle, `${u.name} · ${u.beastCfg.skillName}`, '毁天灭地四象神威爆发！', u.beastCfg.glow, null, u.id);
+                showBanner(battle, `${u.name} · ${u.beastCfg.skillName}`, `毁天灭地${u.beastCfg.tierName || '神兽'}神威爆发！`, u.beastCfg.glow, null, u.id);
                 spawnSparks(battle, zx, zy - 20, u.beastCfg.glow, 26);
                 battle.units.filter((p) => p.alive && p.side === 'player').forEach((p) => {
                   if (Math.hypot(p.x - zx, (p.y - zy) * 1.2) <= 165) {

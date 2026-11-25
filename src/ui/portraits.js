@@ -78,14 +78,14 @@
     const ascPath = o.ascend !== undefined ? o.ascend : (effGen && effGen.ascend) || '';
     const ascBorder = ascPath === 'xian' ? '#38bdf8' : (ascPath === 'mo' ? '#e879f9' : null);
 
-    // 稀有度/阵营/仙魔边框
+    // 稀有度/阵营/神魔边框
     ctx.save();
     App.UI.roundRect(ctx, x, y, size, size, r);
-    ctx.strokeStyle = o.border || ascBorder || (g && g.portraitSpec ? g.portraitSpec.crestColor : getRarityColor(g ? g.rarity : 'N'));
+    ctx.strokeStyle = o.border || ascBorder || (g && g.portraitSpec ? g.portraitSpec.crestColor : getRarityColor(g ? g.rarity : 'B'));
     ctx.lineWidth = o.lineWidth || (ascBorder ? 2.2 : 2);
     ctx.stroke();
 
-    // 右上角仙/魔道果印记角标
+    // 右上角神/魔道果印记角标
     if ((ascPath === 'xian' || ascPath === 'mo') && size >= 34) {
       const isXian = ascPath === 'xian';
       const br = Math.max(7.5, Math.min(11.5, size * 0.135));
@@ -102,16 +102,17 @@
       ctx.font = `bold ${Math.max(9, Math.round(br * 1.12))}px "PingFang SC", serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(isXian ? '仙' : '魔', bx, by + 0.5);
+      ctx.fillText(isXian ? '神' : '魔', bx, by + 0.5);
     }
     ctx.restore();
   }
 
   function getRarityColor(rarity) {
-    if (rarity === 'UR') return '#f43f5e';
-    if (rarity === 'SSR') return '#facc15';
-    if (rarity === 'SR') return '#c084fc';
-    if (rarity === 'R') return '#38bdf8';
+    if (rarity === 'SSS') return '#f43f5e';
+    if (rarity === 'SS') return '#facc15';
+    if (rarity === 'S') return '#c084fc';
+    if (rarity === 'A') return '#38bdf8';
+    if (rarity === 'B') return '#4ade80';
     return '#64748b';
   }
 
@@ -431,6 +432,24 @@
       ctx.fillStyle = '#0369a1';
       ctx.beginPath();
       ctx.arc(0, 0, s * 0.09, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // 太古四凶与上古神兽古篆图腾光轮兜底
+      ctx.strokeStyle = b.glow || '#fde047';
+      ctx.lineWidth = Math.max(2, s * 0.045);
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (Math.PI / 4) * i;
+        const rIn = (i % 2 === 0) ? s * 0.28 : s * 0.16;
+        const px = Math.cos(a) * rIn;
+        const py = Math.sin(a) * rIn;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fillStyle = b.glow || '#fef08a';
+      ctx.beginPath();
+      ctx.arc(0, -s * 0.03, s * 0.09, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();

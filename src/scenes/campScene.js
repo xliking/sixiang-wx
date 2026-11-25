@@ -12,8 +12,8 @@
     ctx.fillRect(0, 0, W, H);
     App.Scenes.map.drawTopBar(ctx);
 
-    App.UI.drawPanel(ctx, 14, 58, W - 28, 470, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
-    App.UI.drawPanel(ctx, 26, 67, W - 52, 40, { r: 10, bg: '#451a03', border: '#d4a34b', lineWidth: 1.8 });
+    App.UI.drawPanel(ctx, 14, 58, W - 28, 474, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
+    App.UI.drawPanel(ctx, 26, 66, W - 52, 42, { r: 10, bg: '#451a03', border: '#d4a34b', lineWidth: 1.8 });
 
     const campIcon = App.Assets.get('icon_camp');
     if (campIcon) ctx.drawImage(campIcon, 34, 70, 34, 34);
@@ -21,13 +21,13 @@
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fef08a';
-    ctx.font = 'bold 15.5px "PingFang SC", serif';
+    ctx.font = 'bold 16px "PingFang SC", serif';
     ctx.fillText(
-      `三军演武营 · 城防粮木后勤修筑 & 五军兵种操练（城防与兵种每级 +${Math.round(stepPct * 100)}%，粮木建筑每级增产扩储）`,
-      76, 87, W - 196
+      `三军演武营 · 城防后勤修筑 & 五军兵种操练（每级属性 +${Math.round(stepPct * 100)}%）`,
+      76, 87, W - 160
     );
     ctx.restore();
-    App.UI.drawButton(ctx, W - 106, 71, 68, 32, '返回', { r: 8, bg: '#5c2c16', border: '#fde047', fontSize: 12 }, () => App.Main.goScene('map'));
+    App.UI.drawCloseButton(ctx, W - 66, 71, 32, () => App.Main.goScene('map'));
 
     const innerX = 26;
     const innerW = W - 52; // 908px

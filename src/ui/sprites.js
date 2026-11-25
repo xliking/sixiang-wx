@@ -1292,6 +1292,11 @@
     unit_cavalry_enemy:  { kind: 'horse',      legY: 0.655, waistY: 0.44, tailEndX: 0.115, anchorX: 0.43, hasPaintedWeapon: true,  joints: HORSE_CAV_JOINTS },
     beast_sprite_baihu:  { kind: 'quad_tiger', legY: 0.77, anchorX: 0.50, legs: [[0, 0.335, 0], [0.335, 0.50, 0.72], [0.50, 0.72, 2.55], [0.72, 1.0, 3.27]] },
     beast_sprite_xuanwu: { kind: 'quad_heavy', legY: 0.81, anchorX: 0.50, legs: [[0, 0.28, 0], [0.28, 0.485, Math.PI], [0.485, 0.71, 1.57], [0.71, 1.0, 1.57 + Math.PI]] },
+    beast_sprite_qiongqi:{ kind: 'quad_tiger', legY: 0.77, anchorX: 0.50, legs: [[0, 0.335, 0], [0.335, 0.50, 0.72], [0.50, 0.72, 2.55], [0.72, 1.0, 3.27]] },
+    beast_sprite_qilin:  { kind: 'quad_tiger', legY: 0.76, anchorX: 0.50, legs: [[0, 0.335, 0], [0.335, 0.50, 0.72], [0.50, 0.72, 2.55], [0.72, 1.0, 3.27]] },
+    beast_sprite_baize:  { kind: 'quad_tiger', legY: 0.76, anchorX: 0.50, legs: [[0, 0.335, 0], [0.335, 0.50, 0.72], [0.50, 0.72, 2.55], [0.72, 1.0, 3.27]] },
+    beast_sprite_taotie: { kind: 'quad_heavy', legY: 0.79, anchorX: 0.50, legs: [[0, 0.28, 0], [0.28, 0.485, Math.PI], [0.485, 0.71, 1.57], [0.71, 1.0, 1.57 + Math.PI]] },
+    beast_sprite_taowu:  { kind: 'quad_heavy', legY: 0.80, anchorX: 0.50, legs: [[0, 0.28, 0], [0.28, 0.485, Math.PI], [0.485, 0.71, 1.57], [0.71, 1.0, 1.57 + Math.PI]] },
     unit_infantry:       { kind: 'biped',      legY: 0.74, waistY: 0.52, armPivot: [0.52, 0.46], armBox: [0.53, 0.16, 1.0, 0.66], anchorX: 0.36, legs: [[0, 0.41, 0], [0.41, 1.0, Math.PI]] },
     unit_infantry_enemy: { kind: 'biped',      legY: 0.74, waistY: 0.52, armPivot: [0.52, 0.46], armBox: [0.53, 0.16, 1.0, 0.66], anchorX: 0.36, legs: [[0, 0.41, 0], [0.41, 1.0, Math.PI]] },
     unit_pikeman:        { kind: 'biped',      legY: 0.76, waistY: 0.54, anchorX: 0.34, legs: [[0, 0.33, 0], [0.33, 0.65, Math.PI]] },
@@ -4023,17 +4028,18 @@
     const coreTpl = eq.beast_core ? App.Config.EQUIP_TEMPLATES[eq.beast_core.tplId] : null;
     const t = time || 0;
 
-    const isQinglong = u.id === 'qinglong';
+    const isQinglong = u.id === 'qinglong' || u.id === 'zhulong';
     const isZhuque = u.id === 'zhuque';
+    const isAerialWinged = u.id === 'kunpeng' || u.id === 'hundun';
     const isXuanwu = u.id === 'xuanwu';
     const isBaihu = u.id === 'baihu';
-    const isFlyer = isQinglong || isZhuque;
+    const isFlyer = isQinglong || isZhuque || isAerialWinged;
     const pose = computeAttackPose(u);
     const mb = u.moveBlend != null ? u.moveBlend : (u.moving ? 1 : 0);
 
-    // 朱雀展翼节拍升浮 vs 青龙游云盘旋升浮
+    // 朱雀/鲲鹏/混沌展翼节拍升浮 vs 青龙/烛龙游云盘旋升浮
     const flapCycle = t * (5.8 + mb * 3.8) + (u.uid || 1) * 1.3;
-    const hover = isZhuque
+    const hover = (isZhuque || isAerialWinged)
       ? (13 + Math.sin(flapCycle) * (4.2 + mb * 2.8))
       : (isQinglong ? (11 + Math.sin(t * 4.2 + (u.uid || 1)) * 4.8) : 0);
     const lungeX = pose.lungeX * 1.15 * facing;
@@ -4255,6 +4261,21 @@
       ctx.arc(-4, -58, 42, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
+    } else if (isAerialWinged && spr) {
+      // ★ 鲲鹏/混沌专属凌空展翼翱翔姿态
+      const leftX = -w * 0.5;
+      const baseTopY = -h + 12 * bSc;
+      ctx.save();
+      ctx.rotate((pose.bodyPitch || 0) * 0.65 + Math.sin(flapCycle) * 0.035);
+      ctx.scale((pose.scaleX || 1) * (1 + Math.sin(flapCycle) * 0.025), (pose.scaleY || 1) * (1 - Math.sin(flapCycle) * 0.03));
+      ctx.drawImage(spr, leftX, baseTopY, w, h);
+      if (u.hitFlash > 0) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.48;
+        ctx.drawImage(spr, leftX, baseTopY, w, h);
+      }
+      ctx.restore();
+      topY = baseTopY - hover + (pose.lungeY || 0);
     } else {
       const info = drawArticulatedSprite(ctx, spr, w, h, u.moving, u.runPhase, u.hitFlash, {
         spriteKey: sprKey,

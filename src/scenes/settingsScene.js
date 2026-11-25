@@ -256,12 +256,15 @@
     ctx.fillText(isInBattle ? '沙场军机设置 · 战局已暂停' : '系统设置 · 音律画质与主公档案', headX + 52, headY + 22);
     ctx.restore();
 
-    const battleCloseLabel = isInBattle
-      ? ((activeBattleRef && activeBattleRef.userPaused) ? '返回战场' : '继续作战')
-      : '返回';
-    App.UI.drawButton(ctx, headX + headW - 92, headY + 5, 82, 34, battleCloseLabel, {
-      r: 8, grad: isInBattle ? ['#b91c1c', '#7f1d1d'] : ['#5c2c16', '#3d1c0c'], border: '#fde047', fontSize: 12.5,
-    }, onClose);
+    if (isInBattle) {
+      const battleCloseLabel = (activeBattleRef && activeBattleRef.userPaused) ? '返回战场' : '继续作战';
+      App.UI.drawButton(ctx, headX + headW - 134, headY + 5, 82, 34, battleCloseLabel, {
+        r: 8, grad: ['#b91c1c', '#7f1d1d'], border: '#fde047', fontSize: 12.5,
+      }, onClose);
+      App.UI.drawCloseButton(ctx, headX + headW - 42, headY + 6, 32, onClose);
+    } else {
+      App.UI.drawCloseButton(ctx, headX + headW - 42, headY + 6, 32, onClose);
+    }
 
     const bodyY = headY + headH + 10;
     const colH = panelH - (bodyY - panelY) - 12;
@@ -419,11 +422,10 @@
   function render(ctx) {
     const W = App.Platform.LOGICAL_W;
     const H = App.Platform.LOGICAL_H;
-    ctx.fillStyle = '#d9c08c';
+    ctx.fillStyle = '#c8ad78';
     ctx.fillRect(0, 0, W, H);
     App.Scenes.map.drawTopBar(ctx);
-    drawSettingsContent(ctx, 14, 60, W - 28, 420, false, () => App.Main.goScene('map'));
-    App.Scenes.map.drawBottomNav(ctx, 'settings');
+    drawSettingsContent(ctx, 16, 58, W - 32, 474, false, () => App.Main.goScene('map'));
   }
 
   function drawBattleModal(ctx) {

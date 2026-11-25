@@ -111,7 +111,7 @@
   function drawAscendChip(ctx, asc, tier, x, y) {
     if (asc !== 'xian' && asc !== 'mo') return 0;
     const info = App.Config.getAscendInfo ? App.Config.getAscendInfo({ ascend: asc, ascendTier: tier || 1 }) : null;
-    const txt = info ? info.title : (asc === 'xian' ? `仙·${tier}重` : `魔·${tier}重`);
+    const txt = info ? info.title : (asc === 'xian' ? `神·${tier}重` : `魔·${tier}重`);
     ctx.save();
     ctx.font = 'bold 9.5px "PingFang SC", sans-serif';
     const w = Math.ceil(ctx.measureText(txt).width) + 12;
@@ -138,8 +138,8 @@
     ctx.fillRect(0, 0, W, H);
     App.Scenes.map.drawTopBar(ctx);
 
-    App.UI.drawPanel(ctx, 14, 62, W - 28, 412, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
-    App.UI.drawPanel(ctx, 24, 71, W - 48, 44, { r: 10, bg: '#451a03', border: '#d4a34b', lineWidth: 1.8 });
+    App.UI.drawPanel(ctx, 26, 58, W - 52, 474, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
+    App.UI.drawPanel(ctx, 36, 66, W - 72, 42, { r: 10, bg: '#451a03', border: '#d4a34b', lineWidth: 1.8 });
 
     const activeRentCnt = Object.keys(st.rentedGenerals || {}).filter((k) => st.rentedGenerals[k] && st.rentedGenerals[k].expireAt > App.API.now()).length;
     const hostedCnt = Object.keys(st.hostedGenerals || {}).length;
@@ -150,8 +150,8 @@
       ['publish', '上架出租'],
     ];
     tabs.forEach(([id, label], i) => {
-      App.UI.drawButton(ctx, 32 + i * 116, 77, 110, 32, label, {
-        r: 8,
+      App.UI.drawButton(ctx, 44 + i * 116, 72, 110, 30, label, {
+        r: 7,
         grad: tab === id ? ['#d97706', '#92400e'] : ['#5c2c16', '#3b1d0e'],
         border: tab === id ? '#fef08a' : '#a16207',
         fontSize: 12,
@@ -169,12 +169,10 @@
     ctx.fillStyle = '#fde68a';
     ctx.font = '11px "PingFang SC", sans-serif';
     const taxPct = Math.round(((hc.taxRate != null ? hc.taxRate : 0.05)) * 100);
-    ctx.fillText(`按时计费 · 馆税${taxPct}% · 到期自动返馆续租`, W - 114, 93);
+    ctx.fillText(`按时计费 · 馆税${taxPct}% · 到期自动返馆`, W - 90, 87);
     ctx.restore();
 
-    App.UI.drawButton(ctx, W - 104, 76, 70, 34, '返回', {
-      r: 8, bg: '#5c2c16', border: '#fde047', fontSize: 12,
-    }, () => App.Main.goScene('map'));
+    App.UI.drawCloseButton(ctx, W - 74, 71, 32, () => App.Main.goScene('map'));
 
     if (tab === 'browse') {
       renderBrowse(ctx, W, st, C, myNick, time);
@@ -197,7 +195,7 @@
     const filters = [
       ['all', '全部名将'],
       ['idle', '仅看待租'],
-      ['xian', '仙道神将'],
+      ['xian', '神道神将'],
       ['mo', '魔道魔尊'],
     ];
     filters.forEach(([fid, label], idx) => {
@@ -254,20 +252,20 @@
     ctx.restore();
 
     list.slice(0, 8).forEach((l, i) => {
-      const x = 28 + (i % 2) * 454;
-      const y = 152 + Math.floor(i / 2) * 68;
-      const g = C.GENERALS[l.generalId] || { name: l.generalId, rarity: 'SR' };
+      const x = 38 + (i % 2) * 446;
+      const y = 152 + Math.floor(i / 2) * 90;
+      const g = C.GENERALS[l.generalId] || { name: l.generalId, rarity: 'A' };
       const isIdle = l.status === 0;
       const isMine = myNick && l.ownerName === myNick;
 
-      App.UI.drawPanel(ctx, x, y, 448, 62, {
+      App.UI.drawPanel(ctx, x, y, 438, 80, {
         r: 9,
         bg: isIdle ? '#fff8e6' : '#efe3c8',
         border: l.ascend === 'xian' ? '#0891b2' : (l.ascend === 'mo' ? '#a21caf' : '#a16207'),
         lineWidth: l.ascend ? 1.8 : 1.2,
       });
 
-      App.Portraits.drawGeneralPortrait(ctx, l.generalId, x + 7, y + 6, 50, {
+      App.Portraits.drawGeneralPortrait(ctx, l.generalId, x + 9, y + 10, 60, {
         radius: 8,
         border: l.ascend === 'xian' ? '#22d3ee' : (l.ascend === 'mo' ? '#e879f9' : '#d97706'),
         lineWidth: 1.8,
@@ -278,66 +276,67 @@
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#451a03';
-      ctx.font = 'bold 13px "PingFang SC", sans-serif';
-      const baseTitle = `[${g.rarity || 'SR'}] ${g.name}`;
-      ctx.fillText(baseTitle, x + 64, y + 18);
+      ctx.font = 'bold 13.5px "PingFang SC", sans-serif';
+      const rarLabel = C.getRarityLabel ? C.getRarityLabel(l.generalId, l) : (g.rarity || 'A');
+      const baseTitle = `[${rarLabel}] ${g.name}`;
+      ctx.fillText(baseTitle, x + 78, y + 24);
       const nw = ctx.measureText(baseTitle).width;
-      drawAscendChip(ctx, l.ascend, l.ascendTier, x + 68 + nw, y + 10);
+      drawAscendChip(ctx, l.ascend, l.ascendTier, x + 82 + nw, y + 16);
 
       ctx.fillStyle = '#78350f';
       ctx.font = '11px "PingFang SC", sans-serif';
-      ctx.fillText(`Lv.${l.lv} · ${l.star}★ · 战力 ${l.power} · 原主:${(l.ownerName || '').slice(0, 6)}`, x + 64, y + 43, 214);
+      ctx.fillText(`Lv.${l.lv} · ${l.star}★ · 战力 ${l.power} · 原主:${(l.ownerName || '').slice(0, 6)}`, x + 78, y + 54, 196);
 
       // 时薪展示（金币图标 + 每小时金币）
-      App.UI.drawMiniIcon(ctx, 'res_gold', x + 278, y + 11, 15);
+      App.UI.drawMiniIcon(ctx, 'res_gold', x + 276, y + 17, 15);
       ctx.fillStyle = '#b45309';
       ctx.font = 'bold 12px "PingFang SC", sans-serif';
-      ctx.fillText(`${l.pricePerHour}/时`, x + 295, y + 19);
+      ctx.fillText(`${l.pricePerHour}/时`, x + 293, y + 25);
 
       if (!isIdle) {
         ctx.fillStyle = '#9a3412';
         ctx.font = 'bold 10px "PingFang SC", sans-serif';
-        ctx.fillText(`${formatRemain(l.rentEndAtMs)}后返馆`, x + 278, y + 43);
+        ctx.fillText(`${formatRemain(l.rentEndAtMs)}后返馆`, x + 276, y + 54);
       } else {
         ctx.fillStyle = '#15803d';
         ctx.font = 'bold 10px "PingFang SC", sans-serif';
-        ctx.fillText('● 待租中 · 即租即战', x + 278, y + 43);
+        ctx.fillText('● 待租中 · 即租即战', x + 276, y + 54);
       }
       ctx.restore();
 
       if (isIdle) {
         if (isMine) {
-          App.UI.drawButton(ctx, x + 368, y + 15, 72, 32, '我的挂单', {
+          App.UI.drawButton(ctx, x + 358, y + 22, 72, 36, '我的挂单', {
             r: 7, bg: '#78350f', border: '#fde68a', fontSize: 11,
           }, () => { tab = 'mine'; loadMine(); });
         } else {
-          App.UI.drawButton(ctx, x + 368, y + 15, 72, 32, '租用助战', {
+          App.UI.drawButton(ctx, x + 358, y + 22, 72, 36, '租用助战', {
             r: 7, grad: ['#c86d19', '#85420e'], border: '#fde68a', fontSize: 11.5,
           }, () => { rentModal = { mode: 'rent', item: l, hours: 1 }; });
         }
       } else {
-        App.UI.drawButton(ctx, x + 368, y + 15, 72, 32, '出租中', {
+        App.UI.drawButton(ctx, x + 358, y + 22, 72, 36, '出租中', {
           r: 7, bg: '#78716c', border: '#d6d3d1', fontSize: 11, disabled: true,
         }, () => {});
       }
     });
 
     if (loading && !list.length) {
-      App.UI.drawPanelLoading(ctx, W / 2, 292, '正在寻访聚贤佣馆名将…');
+      App.UI.drawPanelLoading(ctx, W / 2, 318, '正在寻访聚贤佣馆名将…');
     } else if (!list.length) {
       ctx.save();
       ctx.textAlign = 'center';
       ctx.fillStyle = '#92400e';
       ctx.font = '14px "PingFang SC", sans-serif';
-      ctx.fillText('当前暂无符合条件的出租武将，快去【上架出租】挂出第一位猛将吧！', W / 2, 292);
+      ctx.fillText('当前暂无符合条件的出租武将，快去【上架出租】挂出第一位猛将吧！', W / 2, 318);
       ctx.restore();
     }
 
     const totalPages = Math.max(1, Math.ceil((total || list.length) / 8));
-    App.UI.drawPagination(ctx, W / 2 - 220, 434, 440, 26, page - 1, totalPages, (p) => {
+    App.UI.drawSidePageButtons(ctx, page - 1, totalPages, (p) => {
       page = p + 1;
       loadBrowse();
-    });
+    }, { cy: 328, grad: ['#78350f', '#3b1806'], border: '#f59e0b' });
   }
 
   function renderRented(ctx, W, st, C) {
@@ -360,14 +359,14 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = '#92400e';
       ctx.font = '14px "PingFang SC", sans-serif';
-      ctx.fillText('你当前没有租用中的佣将，可前往【逛佣馆】租借高阶仙魔神将助战通关！', W / 2, 286);
+      ctx.fillText('你当前没有租用中的佣将，可前往【逛佣馆】租借高阶神魔神将助战通关！', W / 2, 286);
       ctx.restore();
       return;
     }
 
     activeKeys.slice(0, 6).forEach((gid, idx) => {
       const rg = st.rentedGenerals[gid];
-      const g = C.GENERALS[gid] || { name: gid, rarity: 'SR' };
+      const g = C.GENERALS[gid] || { name: gid, rarity: 'A' };
       const stats = App.State.getGeneralStats(gid);
       const deployed = (st.deployIds || []).includes(gid);
       const x = 28 + (idx % 2) * 454;
@@ -444,7 +443,7 @@
     }
 
     myListings.slice(0, 6).forEach((l, idx) => {
-      const g = C.GENERALS[l.generalId] || { name: l.generalId, rarity: 'SR' };
+      const g = C.GENERALS[l.generalId] || { name: l.generalId, rarity: 'A' };
       const isRentedOut = l.status === 1;
       const x = 28 + (idx % 2) * 454;
       const y = 156 + Math.floor(idx / 2) * 88;
@@ -505,8 +504,8 @@
     ctx.restore();
 
     const per = 12; // 6列 × 2排
-    const maxP = Math.max(0, Math.ceil(ownedIds.length / per) - 1);
-    pubPage = Math.min(pubPage, maxP);
+    const totalPubPages = Math.max(1, Math.ceil(ownedIds.length / per));
+    pubPage = Math.max(0, Math.min(pubPage, totalPubPages - 1));
 
     ownedIds.slice(pubPage * per, (pubPage + 1) * per).forEach((gid, idx) => {
       const g = C.GENERALS[gid];
@@ -514,13 +513,13 @@
       const pwr = App.State.getStandaloneGeneralPower ? App.State.getStandaloneGeneralPower(gid, gNode) : App.State.getGeneralPower(gid);
       const deployed = (st.deployIds || []).includes(gid);
       const ascInfo = C.getAscendInfo ? C.getAscendInfo(gNode) : null;
-      const x = 28 + (idx % 6) * 151;
-      const y = 148 + Math.floor(idx / 6) * 138;
+      const x = 38 + (idx % 6) * 149;
+      const y = 148 + Math.floor(idx / 6) * 184;
 
-      App.UI.drawPanel(ctx, x, y, 143, 130, {
-        r: 9, bg: '#fff8e6', border: ascInfo ? ascInfo.border : '#a16207', lineWidth: ascInfo ? 1.8 : 1.2,
+      App.UI.drawPanel(ctx, x, y, 141, 172, {
+        r: 10, bg: '#fff8e6', border: ascInfo ? ascInfo.border : '#a16207', lineWidth: ascInfo ? 1.8 : 1.2,
       });
-      App.Portraits.drawGeneralPortrait(ctx, gid, x + 43, y + 8, 56, { radius: 8, ascend: gNode.ascend });
+      App.Portraits.drawGeneralPortrait(ctx, gid, x + 36, y + 12, 68, { radius: 9, ascend: gNode.ascend });
 
       if (deployed) {
         ctx.save();
@@ -537,19 +536,21 @@
       ctx.save();
       ctx.textAlign = 'center';
       ctx.fillStyle = '#451a03';
-      ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
-      ctx.fillText(`${ascInfo ? `[${ascInfo.shortTag}]` : ''}${g.name}`, x + 71.5, y + 78, 135);
+      ctx.font = 'bold 12px "PingFang SC", sans-serif';
+      ctx.fillText(`${ascInfo ? `[${ascInfo.shortTag}]` : ''}${g.name}`, x + 70.5, y + 98, 133);
       ctx.fillStyle = '#78350f';
-      ctx.font = '10px "PingFang SC", sans-serif';
-      ctx.fillText(`Lv.${gNode.lv} · ${gNode.star}★ · 战${pwr}`, x + 71.5, y + 94, 135);
+      ctx.font = '10.5px "PingFang SC", sans-serif';
+      ctx.fillText(`Lv.${gNode.lv} · ${gNode.star}★ · 战${pwr}`, x + 70.5, y + 118, 133);
       ctx.restore();
 
-      App.UI.drawButton(ctx, x + 16, y + 101, 111, 23, ownedIds.length <= 1 ? '留守主将' : '挂牌出租', {
-        r: 6, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 10.5, disabled: ownedIds.length <= 1,
+      App.UI.drawButton(ctx, x + 14, y + 132, 113, 28, ownedIds.length <= 1 ? '留守主将' : '挂牌出租', {
+        r: 7, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 11, disabled: ownedIds.length <= 1,
       }, () => openPublishModal(gid));
     });
 
-    App.UI.drawPagination(ctx, W / 2 - 220, 434, 440, 26, pubPage, maxP + 1, (p) => { pubPage = p; });
+    App.UI.drawSidePageButtons(ctx, pubPage, totalPubPages, (p) => { pubPage = p; }, {
+      cy: 328, grad: ['#78350f', '#3b1806'], border: '#f59e0b',
+    });
   }
 
   function drawRentModal(ctx, W, H, st, hc) {

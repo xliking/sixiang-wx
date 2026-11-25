@@ -852,9 +852,15 @@
         App.UI.addHit(sx, sy, 64, 64, () => toggleSynthUid(uid, st));
       } else {
         ctx.save();
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#92400e'; ctx.font = 'bold 22px sans-serif';
-        ctx.fillText('+', sc.x, sc.y - 2);
+        ctx.strokeStyle = '#92400e';
+        ctx.lineWidth = 2.4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(sc.x - 8, sc.y);
+        ctx.lineTo(sc.x + 8, sc.y);
+        ctx.moveTo(sc.x, sc.y - 8);
+        ctx.lineTo(sc.x, sc.y + 8);
+        ctx.stroke();
         ctx.restore();
       }
       ctx.save();
@@ -1631,7 +1637,7 @@
     App.Scenes.map.drawTopBar(ctx);
 
     // 2. 外层宫殿画框（对称饱满铺满 58~528 区域）
-    drawStageBox(ctx, 14, 58, W - 28, 470, '#3a1d0e', '#241108', '#d97706');
+    drawStageBox(ctx, 14, 58, W - 28, 474, '#3a1d0e', '#241108', '#d97706');
 
     // 3. 顶部六大分殿导航横匾（强化 / 升星 / 合成 / 进阶 / 洗炼 / 法宝）
     App.UI.drawPanel(ctx, 24, 65, W - 48, 46, { r: 10, bg: '#1c0b05', border: '#b45309', lineWidth: 1.6 });
@@ -1681,9 +1687,7 @@
       App.UI.addHit(tx, ty, tw, th, () => switchTab(tab.id));
     });
 
-    App.UI.drawButton(ctx, W - 106, 71, 72, 34, '返回', {
-      r: 8, grad: ['#5c2c16', '#3b1a0b'], border: '#fde047', fontSize: 12.5,
-    }, () => App.Main.goScene('map'));
+    App.UI.drawCloseButton(ctx, W - 68, 72, 32, () => App.Main.goScene('map'));
 
     // 4. 按当前页签渲染对应独立分殿页面
     if (activeTab === 'enhance') renderEnhancePage(ctx, st, time);

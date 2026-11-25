@@ -123,17 +123,15 @@
     ctx.fillRect(0, 0, W, H);
     App.Scenes.map.drawTopBar(ctx);
 
-    App.UI.drawPanel(ctx, 14, 62, W - 28, 418, { r: 14, bg: '#2c160c', border: '#d4a34b', lineWidth: 2.5 });
+    App.UI.drawPanel(ctx, 16, 58, W - 32, 474, { r: 14, bg: '#2c160c', border: '#d4a34b', lineWidth: 2.5 });
 
-    // 右上返回大地图按钮
-    App.UI.drawButton(ctx, W - 110, 72, 82, 32, '返回地图', {
-      r: 8, bg: '#78350f', border: '#fde047', fontSize: 11.5,
-    }, () => { if (!spinning) App.Main.goScene('map'); });
+    // 右上角统一 ✕ 关闭圆章按钮
+    App.UI.drawCloseButton(ctx, W - 64, 70, 34, () => { if (!spinning) App.Main.goScene('map'); });
 
     // 左侧：华丽 8 格鎏金天命大转盘
-    const cx = 252;
-    const cy = 270;
-    const R = 166;
+    const cx = 248;
+    const cy = 296;
+    const R = 176;
     const prizes = App.Config.WHEEL_PRIZES || [];
     const sliceRad = (Math.PI * 2) / Math.max(1, prizes.length);
 
@@ -235,10 +233,10 @@
 
     App.UI.addHit(cx - 42, cy - 42, 84, 84, () => startSpin(spinMode === 'ingot' ? ingotStake : 0));
 
-    // 右侧：双模式切换面板（免费券抽 + 元宝加权抽奖）
+    // 右侧：双模式切换面板（满高铺展至 y=514）
     const rx = 468;
     const rwPanel = 456;
-    App.UI.drawPanel(ctx, rx, 112, rwPanel, 352, { r: 12, bg: '#f4e6c4', border: '#a16207', lineWidth: 2 });
+    App.UI.drawPanel(ctx, rx, 114, rwPanel, 400, { r: 12, bg: '#f4e6c4', border: '#a16207', lineWidth: 2 });
 
     // 顶部双模式标签
     App.UI.drawButton(ctx, rx + 18, 124, 204, 34, `抽奖券抽奖 (剩${st.wheelTickets || 0}次)`, {
@@ -281,7 +279,7 @@
 
       ctx.fillStyle = '#573318';
       ctx.font = '12px "PingFang SC", sans-serif';
-      ctx.fillText('奖池包含：稀世低概率【元宝大奖】、SSR/UR随机名将、四象黄金宝箱、', rx + 20, 244);
+      ctx.fillText('奖池包含：稀世低概率【元宝大奖】、S/SS/SSS随机名将、四象黄金宝箱、', rx + 20, 244);
       ctx.fillText('白银秘宝箱、天子招降圣旨、行军粮草丹与丰厚铜钱将魂！', rx + 20, 264);
       ctx.fillStyle = '#92400e';
       ctx.font = '11.5px "PingFang SC", sans-serif';
@@ -294,7 +292,7 @@
       }
       ctx.restore();
 
-      App.UI.drawButton(ctx, rx + 20, 392, 198, 54, spinning ? '轮盘旋转中...' : `立即抽奖 (剩${st.wheelTickets || 0}次)`, {
+      App.UI.drawButton(ctx, rx + 20, 434, 198, 58, spinning ? '轮盘旋转中...' : `立即抽奖 (剩${st.wheelTickets || 0}次)`, {
         r: 10,
         grad: ['#dc2626', '#991b1b'],
         border: '#fef08a',
@@ -303,7 +301,7 @@
         disabled: spinning || (st.wheelTickets || 0) <= 0,
       }, () => startSpin(0));
 
-      App.UI.drawAdButton(ctx, rx + 230, 392, 206, 54, '免费领抽奖次数', {
+      App.UI.drawAdButton(ctx, rx + 230, 434, 206, 58, '免费领抽奖次数', {
         r: 10,
         fontSize: 14.5,
         subText: '每次免费 +1 次天命抽奖',
@@ -367,7 +365,7 @@
       ctx.fillStyle = '#fde047';
       ctx.font = 'bold 12px "PingFang SC", sans-serif';
       ctx.fillText(
-        `当前投入 ${ingotStake} 元宝  ▶  金装/SSR·UR神将大奖率：${rates.highPct.toFixed(1)}%`,
+        `当前投入 ${ingotStake} 元宝  ▶  金装/SS·SSS神将大奖率：${rates.highPct.toFixed(1)}%`,
         rx + 32,
         282
       );
@@ -401,16 +399,16 @@
         ctx.restore();
       }
 
-      App.UI.drawButton(ctx, rx + 20, 392, 224, 54, spinning ? '祈愿转运中...' : `消耗 ${ingotStake} 元宝立即抽奖`, {
+      App.UI.drawButton(ctx, rx + 20, 434, 224, 58, spinning ? '祈愿转运中...' : `消耗 ${ingotStake} 元宝立即抽奖`, {
         r: 10,
         grad: ['#d97706', '#92400e'],
         border: '#fef08a',
         fontSize: 14.5,
-        subText: `金品神将率 ${rates.highPct.toFixed(1)}% · 抽UR几率倍增`,
+        subText: `金品神将率 ${rates.highPct.toFixed(1)}% · 抽SSS几率倍增`,
         disabled: spinning,
       }, () => startSpin(ingotStake));
 
-      App.UI.drawButton(ctx, rx + 254, 392, 182, 54, `货币互转 (余${st.ingot || 0})`, {
+      App.UI.drawButton(ctx, rx + 254, 434, 182, 58, `货币互转 (余${st.ingot || 0})`, {
         r: 10,
         grad: ['#6b381b', '#43200d'],
         border: '#fbbf24',
@@ -421,8 +419,6 @@
         if (App.UI.openExchangeModal) App.UI.openExchangeModal();
       });
     }
-
-    App.Scenes.map.drawBottomNav(ctx, '');
   }
 
   function leave() {

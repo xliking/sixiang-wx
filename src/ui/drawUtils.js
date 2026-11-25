@@ -486,6 +486,24 @@
         drawVectorBtnGlyph(ctx, o.icon, startX + iconR, textY - 0.5, iconR, fgCol);
         ctx.textAlign = 'left';
         ctx.fillText(cleanText, startX + iconR * 2 + 5, textY, maxTw);
+      } else if (!o.subText && (cleanText === '+' || cleanText === '-' || cleanText === '−')) {
+        // 纯矢量正中绘制单字符加减号，彻底消除不同设备字体基线偏移
+        const cxm = x + w / 2;
+        const cym = y + h / 2;
+        const arm = Math.min(w, h) * 0.22;
+        ctx.save();
+        ctx.strokeStyle = fgCol;
+        ctx.lineWidth = Math.max(1.8, Math.min(2.6, h * 0.085));
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cxm - arm, cym);
+        ctx.lineTo(cxm + arm, cym);
+        if (cleanText === '+') {
+          ctx.moveTo(cxm, cym - arm);
+          ctx.lineTo(cxm, cym + arm);
+        }
+        ctx.stroke();
+        ctx.restore();
       } else {
         ctx.textAlign = 'center';
         ctx.fillText(cleanText, x + w / 2, textY, Math.max(16, w - 10));
@@ -856,23 +874,31 @@
     const resMaxW = Math.max(16, w - iconSz - (o.plusBadge ? 24 : 8));
     ctx.fillText(text, x + iconSz + 2, y + h / 2 + 0.5, resMaxW);
 
-    // 可选右侧快捷加号按钮徽标（点击领取铜钱/恢复粮草体力！）
+    // 可选右侧快捷加号按钮徽标（与胶囊右半圆同心 + 纯矢量十字绘制，确保内外圆与加号 100% 绝对居中！）
     if (o.plusBadge) {
-      const pr = h >= 22 ? 8 : 6.8;
-      const px = x + w - pr - 4;
+      const pr = Math.max(5.5, r - 4);
+      const px = x + w - r;
       const py = y + h / 2;
       ctx.fillStyle = o.plusDisabled ? '#57534e' : (o.plusColor || '#16a34a');
       ctx.beginPath();
       ctx.arc(px, py, pr, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = o.plusDisabled ? '#a8a29e' : '#fef08a';
-      ctx.lineWidth = 1.1;
+      ctx.lineWidth = 1.15;
       ctx.stroke();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${h >= 22 ? 12 : 10}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('+', px, py + 0.5);
+
+      const arm = h >= 22 ? 3.7 : 3.1;
+      ctx.save();
+      ctx.strokeStyle = o.plusDisabled ? 'rgba(255, 255, 255, 0.72)' : '#ffffff';
+      ctx.lineWidth = h >= 22 ? 1.9 : 1.65;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(px - arm, py);
+      ctx.lineTo(px + arm, py);
+      ctx.moveTo(px, py - arm);
+      ctx.lineTo(px, py + arm);
+      ctx.stroke();
+      ctx.restore();
     }
     ctx.restore();
 
@@ -1278,6 +1304,142 @@
     drawButton(ctx, px + pw - 100, py + ph - 48, 82, 34, '关 闭', {
       r: 8, bg: '#574c43', border: '#d6be92', fontSize: 12.5,
     }, closeExchangeModal);
+    drawCloseButton(ctx, px + pw - 42, py + 10, 30, closeExchangeModal);
+  }
+
+  /**
+   * 统一古风鎏金【✕ 关闭】圆章按钮（替代原各页面的文字“返回 / 返回地图”按钮）
+   */
+  function drawCloseButton(ctx, x, y, size, onClick, opts) {
+    const sz = size || 34;
+    const o = opts || {};
+    const cx = x + sz / 2;
+    const cy = y + sz / 2;
+    const r = sz / 2;
+    const gradCols = o.grad || ['#991b1b', '#450a0a'];
+    const borderCol = o.border || '#fde047';
+    const crossCol = o.color || '#fffbeb';
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 2;
+
+    const g = ctx.createRadialGradient(cx - r * 0.2, cy - r * 0.25, r * 0.1, cx, cy, r);
+    g.addColorStop(0, gradCols[0]);
+    g.addColorStop(1, gradCols[1]);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.strokeStyle = borderCol;
+    ctx.lineWidth = o.lineWidth || 2;
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(254, 240, 138, 0.28)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(4, r - 3.5), 0, Math.PI * 2);
+    ctx.stroke();
+
+    const arm = sz * 0.22;
+    ctx.strokeStyle = crossCol;
+    ctx.lineWidth = Math.max(2.3, sz * 0.085);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - arm, cy - arm);
+    ctx.lineTo(cx + arm, cy + arm);
+    ctx.moveTo(cx + arm, cy - arm);
+    ctx.lineTo(cx - arm, cy + arm);
+    ctx.stroke();
+    ctx.restore();
+
+    const cb = onClick || (() => {
+      if (App.Main && App.Main.goScene) App.Main.goScene('map');
+    });
+    addHit(x - 6, y - 6, sz + 12, sz + 12, cb);
+  }
+
+  /**
+   * 页面左右两侧悬浮翻页耳标按钮（替代底部/顶部冗长数字分页条）
+   */
+  function drawSidePageButtons(ctx, pageIdx, totalPages, onPageChange, opts) {
+    const total = Math.max(1, Number(totalPages) || 1);
+    const o = opts || {};
+    if (total <= 1 && !o.alwaysShow) return;
+
+    const W = (App.Platform && App.Platform.LOGICAL_W) || 960;
+    const cur = Math.max(0, Math.min(total - 1, Number(pageIdx) || 0));
+    const bw = o.w || 28;
+    const bh = o.h || 82;
+    const cy = o.cy || 312;
+    const by = Math.round(cy - bh / 2);
+    const lx = o.leftX != null ? o.leftX : 3;
+    const rx = o.rightX != null ? o.rightX : (W - bw - 3);
+
+    const gradActive = o.grad || ['#78350f', '#3b1806'];
+    const gradDisabled = o.disabledGrad || ['rgba(45, 28, 18, 0.55)', 'rgba(24, 14, 9, 0.55)'];
+    const borderActive = o.border || '#facc15';
+    const borderDisabled = 'rgba(168, 162, 158, 0.35)';
+    const arrowCol = o.arrowColor || '#fef08a';
+
+    const drawSide = (bx, isLeft, enabled, targetPage) => {
+      ctx.save();
+      ctx.shadowColor = enabled ? 'rgba(0, 0, 0, 0.48)' : 'transparent';
+      ctx.shadowBlur = enabled ? 6 : 0;
+      ctx.shadowOffsetY = enabled ? 2 : 0;
+
+      roundRect(ctx, bx, by, bw, bh, 9);
+      const g = ctx.createLinearGradient(bx, by, bx, by + bh);
+      const cols = enabled ? gradActive : gradDisabled;
+      g.addColorStop(0, cols[0]);
+      g.addColorStop(1, cols[1]);
+      ctx.fillStyle = g;
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.strokeStyle = enabled ? borderActive : borderDisabled;
+      ctx.lineWidth = enabled ? 1.8 : 1.1;
+      ctx.stroke();
+
+      // 矢量折角箭头
+      const acx = bx + bw / 2 + (isLeft ? -1 : 1);
+      const acy = by + bh / 2 - 8;
+      ctx.strokeStyle = enabled ? arrowCol : 'rgba(168, 162, 158, 0.45)';
+      ctx.lineWidth = 2.6;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      if (isLeft) {
+        ctx.moveTo(acx + 4, acy - 8);
+        ctx.lineTo(acx - 4, acy);
+        ctx.lineTo(acx + 4, acy + 8);
+      } else {
+        ctx.moveTo(acx - 4, acy - 8);
+        ctx.lineTo(acx + 4, acy);
+        ctx.lineTo(acx - 4, acy + 8);
+      }
+      ctx.stroke();
+
+      // 紧凑页码角标 (如 1/6)
+      ctx.fillStyle = enabled ? '#fde68a' : 'rgba(214, 211, 209, 0.45)';
+      ctx.font = 'bold 9.5px "PingFang SC", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${cur + 1}/${total}`, bx + bw / 2, by + bh - 15, bw - 2);
+      ctx.restore();
+
+      if (enabled && onPageChange) {
+        addHit(bx - 6, by - 6, bw + 12, bh + 12, () => onPageChange(targetPage));
+      }
+    };
+
+    drawSide(lx, true, cur > 0, cur - 1);
+    drawSide(rx, false, cur < total - 1, cur + 1);
   }
 
   App.UI = {
@@ -1287,5 +1449,6 @@
     measureTextCached, wrapLinesCached,
     roundRect, drawPanel, drawWoodHeader, drawButton, drawAdButton, drawBar, drawWrappedText, drawAdOverlay, drawInputOverlay,
     drawMiniIcon, drawResCapsule, drawSoundToggle, drawVectorGear, drawSettingsGearButton, drawPagination,
+    drawCloseButton, drawSidePageButtons,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

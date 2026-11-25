@@ -97,12 +97,12 @@
       subTitle = '全军集火 · 斩获讨伐积分兑换秘宝';
       enemyId = lv.bossId || (lv.enemyGenerals && lv.enemyGenerals[0] && lv.enemyGenerals[0].id);
     } else if (mode === 'xian') {
-      title = lv.name || '升仙副本 · 九天仙台';
-      subTitle = '连破三重仙门 · 夺取九转飞仙丹与太清仙灵髓';
+      title = lv.name || '成神副本 · 九天封神台';
+      subTitle = '连破三重神门 · 夺取九转封神丹与太初神灵髓';
       const passes = (lv.special && lv.special.cfg && lv.special.cfg.passes) || [];
       enemyId = (passes[passes.length - 1] && passes[passes.length - 1].generalId) || 'guanyu';
     } else if (mode === 'mo') {
-      title = lv.name || '升魔副本 · 幽冥魔渊';
+      title = lv.name || '成魔副本 · 幽冥魔渊';
       subTitle = '踏破三重魔坛 · 炼化九幽化魔丹与炼狱魔煞晶';
       const passes = (lv.special && lv.special.cfg && lv.special.cfg.passes) || [];
       enemyId = (passes[passes.length - 1] && passes[passes.length - 1].generalId) || 'lvbu';

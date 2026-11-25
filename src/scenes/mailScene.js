@@ -125,7 +125,7 @@
   }
 
   function drawTabs(ctx, W) {
-    App.UI.drawPanel(ctx, 26, 74, W - 52, 54, { r: 10, bg: '#451a03', border: '#d4a34b', lineWidth: 1.8 });
+    App.UI.drawPanel(ctx, 26, 66, W - 52, 46, { r: 10, bg: '#451a03', border: '#d4a34b', lineWidth: 1.8 });
     const tabs = [
       { id: 'mail', label: '军情邮件' },
       { id: 'notice', label: '公告活动' },
@@ -133,15 +133,15 @@
     ];
     tabs.forEach((t, i) => {
       const on = tab === t.id;
-      const bx = 40 + i * 126;
-      App.UI.drawButton(ctx, bx, 84, 118, 34, t.label, {
+      const bx = 38 + i * 124;
+      App.UI.drawButton(ctx, bx, 73, 116, 32, t.label, {
         r: 8, bg: on ? '#b45309' : '#5c2c16', border: on ? '#fef08a' : '#a16207', fontSize: 12.5,
       }, () => { tab = t.id; page = 0; });
       if (t.id === 'mail' && App.API.hasUnclaimedMail()) {
         ctx.save();
         ctx.fillStyle = '#ef4444';
         ctx.beginPath();
-        ctx.arc(bx + 112, 89, 4.2, 0, Math.PI * 2);
+        ctx.arc(bx + 110, 78, 4.2, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }
@@ -150,9 +150,9 @@
     ctx.textAlign = 'right';
     ctx.fillStyle = App.API.isOnline() ? '#86efac' : '#fca5a5';
     ctx.font = '11px "PingFang SC", sans-serif';
-    ctx.fillText(App.API.isOnline() ? '● 已连接服务器' : '● 离线（联网后可收发）', W - 124, 106);
+    ctx.fillText(App.API.isOnline() ? '● 已连接服务器' : '● 离线（联网后可收发）', W - 82, 93);
     ctx.restore();
-    App.UI.drawButton(ctx, W - 108, 84, 70, 34, '返回', { r: 8, bg: '#5c2c16', border: '#fde047', fontSize: 12 }, () => App.Main.goScene('map'));
+    App.UI.drawCloseButton(ctx, W - 66, 73, 32, () => App.Main.goScene('map'));
   }
 
   function drawEmpty(ctx, W, text, isSpin) {
@@ -202,33 +202,33 @@
       App.UI.addHit(26, y, 372, 42, () => { selectedId = m.id; App.API.markMailRead(m.id); });
     });
 
-    App.UI.drawPagination(ctx, 26, 430, 372, 28, page, maxPage + 1, (p) => { page = p; selectedId = null; });
+    App.UI.drawPagination(ctx, 26, 482, 372, 28, page, maxPage + 1, (p) => { page = p; selectedId = null; });
 
-    // 右侧详情
-    App.UI.drawPanel(ctx, 410, 138, W - 436, 322, { r: 10, bg: '#fff7e0', border: '#7c4a21', lineWidth: 1.6 });
+    // 右侧详情（满高铺展至 y=518）
+    App.UI.drawPanel(ctx, 410, 122, W - 436, 396, { r: 10, bg: '#fff7e0', border: '#7c4a21', lineWidth: 1.6 });
     ctx.save();
     ctx.textAlign = 'left';
     ctx.fillStyle = '#451a03';
     ctx.font = 'bold 17px "PingFang SC", serif';
-    ctx.fillText(sel.title, 428, 168);
+    ctx.fillText(sel.title, 428, 154);
     ctx.fillStyle = '#92400e';
     ctx.font = '11px "PingFang SC", sans-serif';
-    ctx.fillText(`发件人：${sel.sender || '系统'}　${fmtTime(sel.createdAt, 0, 16)}${sel.expireAt ? '　有效期至 ' + fmtTime(sel.expireAt, 0, 16) : ''}`, 428, 188);
+    ctx.fillText(`发件人：${sel.sender || '系统'}　${fmtTime(sel.createdAt, 0, 16)}${sel.expireAt ? '　有效期至 ' + fmtTime(sel.expireAt, 0, 16) : ''}`, 428, 176);
     ctx.fillStyle = '#57301a';
     ctx.font = '13px "PingFang SC", sans-serif';
-    App.UI.drawWrappedText(ctx, sel.content || '（无正文）', 428, 216, W - 472, 20, 'left');
+    App.UI.drawWrappedText(ctx, sel.content || '（无正文）', 428, 206, W - 472, 20, 'left');
     ctx.restore();
 
     const gifts = sel.attachments || [];
     if (gifts.length) {
-      App.UI.drawPanel(ctx, 424, 326, W - 464, 72, { r: 8, bg: '#fdecc0', border: '#d4a34b', lineWidth: 1.2 });
+      App.UI.drawPanel(ctx, 424, 372, W - 464, 76, { r: 8, bg: '#fdecc0', border: '#d4a34b', lineWidth: 1.2 });
       ctx.save();
       ctx.textAlign = 'left';
       ctx.fillStyle = '#92400e';
       ctx.font = 'bold 11px "PingFang SC", sans-serif';
-      ctx.fillText('附件奖励', 436, 343);
+      ctx.fillText('附件奖励', 436, 390);
       let gx = 436;
-      const gy = 350;
+      const gy = 398;
       gifts.slice(0, 6).forEach((r) => {
         if (r.type === 'equip' || r.type === 'item') {
           App.Sprites.drawEquipIcon(ctx, r.id, gx, gy, 34, { radius: 6, lineWidth: 1.4, noAnim: true });
@@ -261,16 +261,16 @@
       });
       ctx.fillStyle = '#7c2d12';
       ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
-      App.UI.drawWrappedText(ctx, rewardsText(gifts), gx + 4, 363, Math.max(120, W - 46 - gx), 15, 'left');
+      App.UI.drawWrappedText(ctx, rewardsText(gifts), gx + 4, 411, Math.max(120, W - 46 - gx), 15, 'left');
       ctx.restore();
     }
 
     const claimable = gifts.length && sel.status < 2;
-    App.UI.drawButton(ctx, 428, 408, 190, 40, sel.status === 2 ? '✓ 已领取' : (gifts.length ? '领取附件' : '无附件'), {
+    App.UI.drawButton(ctx, 428, 460, 190, 42, sel.status === 2 ? '✓ 已领取' : (gifts.length ? '领取附件' : '无附件'), {
       r: 9, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 14, disabled: !claimable || busy,
     }, () => claim(sel.id));
     const anyClaimable = mails.some((m) => m.status < 2 && m.attachments && m.attachments.length);
-    App.UI.drawButton(ctx, W - 232, 408, 190, 40, '一键领取全部', {
+    App.UI.drawButton(ctx, W - 232, 460, 190, 42, '一键领取全部', {
       r: 9, grad: ['#16a34a', '#15803d'], border: '#bbf7d0', fontSize: 14, disabled: !anyClaimable || busy,
     }, () => claim(null));
   }
@@ -327,7 +327,7 @@
   }
 
   function drawFeedbackTab(ctx, W) {
-    const leftX = 26, leftW = 424, topY = 136, boxH = 324;
+    const leftX = 26, leftW = 424, topY = 122, boxH = 396;
     const rightX = 462, rightW = W - 26 - rightX; // 472
 
     // ==================== 左栏：撰写并提交意见反馈 ====================
@@ -564,7 +564,7 @@
       });
     }
 
-    App.UI.drawPagination(ctx, detX, topY + 292, detW, 24, fbPage, maxFbPage + 1, (p) => {
+    App.UI.drawPagination(ctx, detX, topY + 358, detW, 26, fbPage, maxFbPage + 1, (p) => {
       fbPage = p;
       selectedFbId = null;
     });
@@ -573,15 +573,14 @@
   function render(ctx) {
     const W = App.Platform.LOGICAL_W;
     const H = App.Platform.LOGICAL_H;
-    ctx.fillStyle = '#d9c08c';
+    ctx.fillStyle = '#c8ad78';
     ctx.fillRect(0, 0, W, H);
     App.Scenes.map.drawTopBar(ctx);
-    App.UI.drawPanel(ctx, 14, 62, W - 28, 412, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
+    App.UI.drawPanel(ctx, 16, 58, W - 32, 474, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
     drawTabs(ctx, W);
     if (tab === 'mail') drawMailTab(ctx, W);
     else if (tab === 'notice') drawNoticeTab(ctx, W);
     else drawFeedbackTab(ctx, W);
-    App.Scenes.map.drawBottomNav(ctx, '');
   }
 
   App.Scenes = App.Scenes || {};

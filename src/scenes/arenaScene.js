@@ -1,8 +1,6 @@
 (function (root) {
   const App = (root.SiXiang = root.SiXiang || {});
 
-  // 演武场天梯：全服唯一名次，击败名次靠前的对手即与其互换名次；没有玩家占据的名次由系统军团驻守
-  // 同时支持按主公 ID 或名称搜索玩家进行好友切磋（不消耗挑战令、不发奖励、不互换名次）
   let matches = [];
   let info = null;
   let loading = false;
@@ -26,7 +24,6 @@
     refresh(false);
   }
 
-  // 对手与名次都由服务端生成并保存，客户端只展示
   async function refresh(isManual) {
     if (loading) return;
     loading = true;
@@ -87,27 +84,27 @@
 
   function drawLogs(ctx, W, H) {
     App.UI.addHit(0, 0, W, H, () => {});
-    ctx.save(); ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'; ctx.fillRect(0, 0, W, H); ctx.restore();
-    const x = W / 2 - 280, y = 84, w = 560, h = 380;
+    ctx.save(); ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'; ctx.fillRect(0, 0, W, H); ctx.restore();
+    const x = W / 2 - 280, y = 76, w = 560, h = 400;
     App.UI.drawPanel(ctx, x, y, w, h, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2.4 });
-    App.UI.drawWoodHeader(ctx, x + 10, y + 10, w - 20, 40);
+    App.UI.drawWoodHeader(ctx, x + 10, y + 10, w - 20, 42);
     ctx.save();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fef08a'; ctx.font = 'bold 16px "PingFang SC", serif';
-    ctx.fillText('演武战报（最近 20 场）', x + w / 2, y + 30);
+    ctx.fillText('演武战报（最近 20 场）', x + w / 2, y + 31);
     const logs = (info && info.logs) || [];
     ctx.textAlign = 'left'; ctx.font = '12.5px "PingFang SC", sans-serif';
-    logs.slice(0, 11).forEach((l, i) => {
-      const ry = y + 70 + i * 26;
+    logs.slice(0, 12).forEach((l, i) => {
+      const ry = y + 72 + i * 26;
       let text;
       if (l.attack) text = l.win ? `你击败了【${l.name}】` + (l.to < l.from ? `，名次 ${l.from} → ${l.to}` : '') : `你挑战【${l.name}】失利`;
       else text = l.win ? `【${l.name}】前来挑战，被你击退` : `【${l.name}】击败了你` + (l.to !== l.from ? `，名次 ${l.from} → ${l.to}` : '');
       ctx.fillStyle = '#92400e'; ctx.fillText(fmtTime(l.t), x + 24, ry);
       ctx.fillStyle = l.win ? '#15803d' : '#b91c1c'; ctx.fillText(text, x + 118, ry, w - 142);
     });
-    if (!logs.length) { ctx.textAlign = 'center'; ctx.fillStyle = '#92400e'; ctx.fillText('还没有战报，去挑战一场吧', x + w / 2, y + 180); }
+    if (!logs.length) { ctx.textAlign = 'center'; ctx.fillStyle = '#92400e'; ctx.fillText('还没有战报，去挑战一场吧', x + w / 2, y + 200); }
     ctx.restore();
-    App.UI.drawButton(ctx, x + w / 2 - 60, y + h - 50, 120, 36, '关闭', { r: 9, grad: ['#475569', '#334155'], border: '#cbd5e1', fontSize: 13 }, () => { showLogs = false; });
+    App.UI.drawCloseButton(ctx, x + w - 46, y + 15, 32, () => { showLogs = false; });
   }
 
   function render(ctx) {
@@ -115,12 +112,13 @@
     const H = App.Platform.LOGICAL_H;
     const st = App.State.get();
 
-    ctx.fillStyle = '#d9c08c';
+    ctx.fillStyle = '#c8ad78';
     ctx.fillRect(0, 0, W, H);
     App.Scenes.map.drawTopBar(ctx);
 
-    App.UI.drawPanel(ctx, 14, 64, W - 28, 408, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
-    App.UI.drawPanel(ctx, 28, 78, W - 56, 54, { r: 10, bg: '#5c2c16', border: '#d4a34b' });
+    // 满高演武场大画板（y=58..532，移除底部返回条与多余我方战力文字）
+    App.UI.drawPanel(ctx, 26, 58, W - 52, 474, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
+    App.UI.drawPanel(ctx, 36, 66, W - 72, 48, { r: 10, bg: '#451a03', border: '#d4a34b', lineWidth: 1.6 });
 
     const ranked = info && info.rank < 9999;
     const inSearch = !!searchKeyword;
@@ -132,140 +130,140 @@
     ctx.fillStyle = '#fef08a';
     ctx.font = 'bold 15.5px "PingFang SC", serif';
     if (inSearch) {
-      ctx.fillText(`好友切磋 · 搜索「${searchKeyword}」（共 ${searchMatches.length} 人）`, 42, 102, 340);
+      ctx.fillText(`好友切磋 · 搜索「${searchKeyword}」（${searchMatches.length}人）`, 48, 86, 316);
       ctx.fillStyle = '#fde68a';
-      ctx.font = '11.5px "PingFang SC", sans-serif';
-      ctx.fillText(
-        searchPages > 1
-          ? `切磋演武不耗挑战令 · 不互换名次 · 第 ${searchPage + 1}/${searchPages} 页`
-          : '切磋演武不消耗挑战令 · 不发放奖励 · 不互换天梯名次',
-        42, 122, 340
-      );
+      ctx.font = '11px "PingFang SC", sans-serif';
+      ctx.fillText('免挑战令 · 不互换天梯名次', 48, 105, 316);
     } else {
-      ctx.fillText(ranked ? `演武场天梯 · 第 ${info.rank} 名 · ${info.title}` : '演武场天梯', 42, 102, 340);
+      ctx.fillText(ranked ? `演武场 · 第 ${info.rank} 名（${info.title}）` : '演武场天梯', 48, 86, 316);
       ctx.fillStyle = '#fde68a';
-      ctx.font = '11.5px "PingFang SC", sans-serif';
+      ctx.font = '11px "PingFang SC", sans-serif';
       ctx.fillText(ranked
-        ? `历史最高第 ${info.bestRank || info.rank} 名 · ${info.wins} 胜 ${info.losses} 负 · 战力 ${App.State.getTeamPower()} · 挑战令 ${st.arenaTickets}`
-        : '击败名次靠前的对手即可夺取其名次', 42, 122, 340);
+        ? `最高第 ${info.bestRank || info.rank} 名 · ${info.wins}胜${info.losses}负 · 挑战令 ${st.arenaTickets}`
+        : `击败前排对手夺取名次 · 挑战令 ${st.arenaTickets}`, 48, 105, 316);
     }
     ctx.restore();
 
     if (inSearch) {
-      App.UI.drawButton(ctx, 392, 88, 98, 34, '← 返回天梯', {
-        r: 8, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 12,
+      App.UI.drawButton(ctx, 374, 74, 92, 32, '← 回天梯', {
+        r: 8, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 11.5,
       }, () => {
         searchKeyword = '';
         searchMatches = [];
         searchPage = 0;
       });
-      App.UI.drawButton(ctx, 496, 88, 104, 34, '重新搜索', {
-        r: 8, icon: 'search', grad: ['#0369a1', '#0c4a6e'], border: '#bae6fd', fontSize: 12, loading, loadingText: '查找中',
+      App.UI.drawButton(ctx, 472, 74, 96, 32, '重新搜索', {
+        r: 8, icon: 'search', grad: ['#0369a1', '#0c4a6e'], border: '#bae6fd', fontSize: 11.5, loading, loadingText: '查找中',
       }, openSearchPrompt);
     } else {
-      App.UI.drawButton(ctx, 392, 88, 98, 34, '搜ID/主公', {
-        r: 8, icon: 'search', grad: ['#0369a1', '#0c4a6e'], border: '#bae6fd', fontSize: 11.5, loading: false,
+      App.UI.drawButton(ctx, 374, 74, 94, 32, '搜ID/主公', {
+        r: 8, icon: 'search', grad: ['#0369a1', '#0c4a6e'], border: '#bae6fd', fontSize: 11, loading: false,
       }, openSearchPrompt);
       const claimed = !info || info.rewardClaimed;
-      App.UI.drawButton(ctx, 496, 88, 104, 34, claimed ? '今日已领奖' : '领排名奖励', {
-        r: 8, grad: ['#15803d', '#166534'], border: '#bbf7d0', fontSize: 11.5, disabled: claimed,
+      App.UI.drawButton(ctx, 474, 74, 98, 32, claimed ? '今日已领奖' : '领排名奖励', {
+        r: 8, grad: ['#15803d', '#166534'], border: '#bbf7d0', fontSize: 11, disabled: claimed,
       }, () => {
         App.State.arenaReward().then((res) => { if (res.ok && res.arena) info = res.arena; });
       });
     }
 
-    App.UI.drawButton(ctx, 606, 88, 62, 34, '战报', { r: 8, grad: ['#0369a1', '#0c4a6e'], border: '#bae6fd', fontSize: 12 }, () => { showLogs = true; });
-    if (inSearch && searchPages > 1) {
-      App.UI.drawButton(ctx, 674, 88, 92, 34, `换页 ${searchPage + 1}/${searchPages}`, {
-        r: 8, grad: ['#b45309', '#78350f'], border: '#fde047', fontSize: 11.5,
-      }, () => { searchPage = (searchPage + 1) % searchPages; });
-    } else {
-      App.UI.drawButton(ctx, 674, 88, 92, 34, '换一批对手', {
-        r: 8, grad: ['#b45309', '#78350f'], border: '#fde047', fontSize: 11.5, loading: loading && !inSearch, loadingText: '匹配中',
-      }, () => refresh(true));
-    }
-    App.UI.drawAdButton(ctx, 772, 88, 152, 34, '挑战令 +3', { r: 8, fontSize: 11.5 }, () => {
+    App.UI.drawButton(ctx, 578, 74, 58, 32, '战报', { r: 8, grad: ['#0369a1', '#0c4a6e'], border: '#bae6fd', fontSize: 11.5 }, () => { showLogs = true; });
+    App.UI.drawButton(ctx, 642, 74, 92, 32, '换一批对手', {
+      r: 8, grad: ['#b45309', '#78350f'], border: '#fde047', fontSize: 11, loading: loading && !inSearch, loadingText: '匹配中', disabled: inSearch,
+    }, () => refresh(true));
+
+    App.UI.drawAdButton(ctx, 740, 74, 136, 32, '挑战令 +3', { r: 8, fontSize: 11 }, () => {
       App.Platform.showRewardedAd('arena_ticket', '观看激励视频，免费领取演武场挑战令 +3！', () => {
         App.State.claimAd('arena_ticket');
       });
     });
 
-    const cardW = 290;
-    const cardH = 304;
+    App.UI.drawCloseButton(ctx, W - 74, 74, 32, () => App.Main.goScene('map'));
+
+    const cardW = 288;
+    const cardH = 396;
     const displayList = inSearch
       ? searchMatches.slice(searchPage * 3, searchPage * 3 + 3)
       : matches.slice(0, 3);
 
     if (loading && !displayList.length) {
-      App.UI.drawPanelLoading(ctx, W / 2, 295, inSearch ? '正在查找主公军团…' : '正在搜寻天梯对手…');
+      App.UI.drawPanelLoading(ctx, W / 2, 310, inSearch ? '正在查找主公军团…' : '正在搜寻天梯对手…');
     } else if (!displayList.length && info) {
       ctx.save(); ctx.textAlign = 'center'; ctx.fillStyle = '#92400e'; ctx.font = 'bold 16px "PingFang SC", serif';
-      ctx.fillText(info.rank === 1 ? '你已登顶天梯榜首，静候各路豪杰前来挑战！' : '暂时没有可挑战的对手，请稍后再试', W / 2, 295);
+      ctx.fillText(info.rank === 1 ? '你已登顶天梯榜首，静候各路豪杰前来挑战！' : '暂时没有可挑战的对手，请稍后再试', W / 2, 310);
       ctx.restore();
     }
     displayList.forEach((m, idx) => {
-      const cx = 28 + idx * (cardW + 17);
-      const cy = 146;
+      const cx = 38 + idx * (cardW + 10);
+      const cy = 124;
       const isSpar = !!m.spar;
       const hasRank = m.rank > 0 && m.rank < 9999;
 
-      App.UI.drawPanel(ctx, cx, cy, cardW, cardH, { r: 12, bg: '#e8d4a6', border: '#9a3412', lineWidth: 2 });
-      App.UI.drawWoodHeader(ctx, cx + 8, cy + 8, cardW - 16, 48);
+      App.UI.drawPanel(ctx, cx, cy, cardW, cardH, { r: 12, bg: '#ead8ad', border: '#9a3412', lineWidth: 2 });
+      App.UI.drawWoodHeader(ctx, cx + 8, cy + 8, cardW - 16, 54);
 
       ctx.save();
       ctx.textAlign = 'left';
       ctx.fillStyle = '#fef08a';
-      ctx.font = 'bold 15px "PingFang SC", sans-serif';
-      ctx.fillText(hasRank ? `第 ${m.rank} 名 · ${m.playerName}` : `未入榜 · ${m.playerName}`, cx + 18, cy + 30, cardW - 92);
+      ctx.font = 'bold 15.5px "PingFang SC", sans-serif';
+      ctx.fillText(hasRank ? `第 ${m.rank} 名 · ${m.playerName}` : `未入榜 · ${m.playerName}`, cx + 18, cy + 31, cardW - 92);
       ctx.fillStyle = '#fde68a';
-      ctx.font = '11px "PingFang SC", sans-serif';
+      ctx.font = '11.5px "PingFang SC", sans-serif';
       const subLine = m.isPlayer && m.playerId
         ? `${m.title} · ID:${m.playerId} · 战力 ${m.power}`
         : `${m.title}   军团战力：${m.power}`;
-      ctx.fillText(subLine, cx + 18, cy + 48, cardW - 36);
+      ctx.fillText(subLine, cx + 18, cy + 51, cardW - 36);
       ctx.textAlign = 'right';
       ctx.fillStyle = isSpar ? '#fde047' : (m.isPlayer ? '#86efac' : '#d6d3d1');
       ctx.font = 'bold 11px "PingFang SC", sans-serif';
-      ctx.fillText(isSpar ? '好友切磋' : (m.isPlayer ? '玩家' : '系统军团'), cx + cardW - 18, cy + 30);
+      ctx.fillText(isSpar ? '好友切磋' : (m.isPlayer ? '玩家' : '系统军团'), cx + cardW - 18, cy + 31);
 
       ctx.textAlign = 'left';
       ctx.fillStyle = '#451a03';
-      ctx.font = 'bold 12px "PingFang SC", sans-serif';
-      ctx.fillText(`对方防守阵容（Lv.${m.lv}）：`, cx + 14, cy + 78);
+      ctx.font = 'bold 12.5px "PingFang SC", sans-serif';
+      ctx.fillText(`防守阵容（Lv.${m.lv}）：`, cx + 14, cy + 88);
       ctx.restore();
 
       (m.generals || []).slice(0, 5).forEach((gid, gIdx) => {
-        const px = cx + 12 + gIdx * 54;
-        App.Portraits.drawGeneralPortrait(ctx, gid, px, cy + 88, 50, { radius: 7, lineWidth: 1.6 });
+        const px = cx + 13 + gIdx * 53;
+        App.Portraits.drawGeneralPortrait(ctx, gid, px, cy + 102, 50, { radius: 8, lineWidth: 1.8 });
         ctx.save();
         ctx.fillStyle = '#451a03';
-        ctx.font = '10px "PingFang SC", sans-serif';
+        ctx.font = 'bold 10px "PingFang SC", sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText((App.Config.GENERALS[gid] || {}).name || '', px + 25, cy + 152, 52);
+        ctx.fillText((App.Config.GENERALS[gid] || {}).name || '', px + 25, cy + 168, 52);
         ctx.restore();
       });
 
+      const bCfg = m.beast && App.Config.BEASTS[m.beast] ? App.Config.BEASTS[m.beast] : null;
+      App.UI.drawPanel(ctx, cx + 14, cy + 186, cardW - 28, 56, { r: 8, bg: 'rgba(69, 26, 3, 0.12)', border: 'rgba(154, 52, 18, 0.35)', lineWidth: 1 });
+      if (bCfg) {
+        App.Portraits.drawBeastPortrait(ctx, bCfg.id, cx + 22, cy + 193, 42, { radius: 8, border: bCfg.glow, lineWidth: 1.6 });
+      }
       ctx.save();
+      ctx.textAlign = 'left';
       ctx.fillStyle = '#7c2d12';
+      ctx.font = 'bold 12.5px "PingFang SC", sans-serif';
+      ctx.fillText(bCfg ? `守护神兽：${bCfg.name}` : '守护神兽：暂未任命上阵', cx + (bCfg ? 72 : 24), cy + 219);
+
+      ctx.textAlign = 'center';
       ctx.font = 'bold 12px "PingFang SC", sans-serif';
-      const bName = m.beast && App.Config.BEASTS[m.beast] ? App.Config.BEASTS[m.beast].name : '无守护神兽';
-      ctx.fillText(`守护神兽：${bName}`, cx + 14, cy + 182);
       if (isSpar) {
         ctx.fillStyle = '#b45309';
-        ctx.fillText('好友切磋：免挑战令 · 不计名次与胜负奖励', cx + 14, cy + 206, cardW - 28);
+        ctx.fillText('好友切磋：免挑战令 · 不计名次与胜负奖励', cx + cardW / 2, cy + 274, cardW - 28);
       } else {
         ctx.fillStyle = '#15803d';
-        ctx.fillText(`胜利：夺取第 ${m.rank} 名 · 铜钱+${m.rewardGold} 将魂+${m.rewardSoul}`, cx + 14, cy + 206, cardW - 28);
+        ctx.fillText(`胜利：夺取第 ${m.rank} 名 · 铜钱+${m.rewardGold} 将魂+${m.rewardSoul}`, cx + cardW / 2, cy + 274, cardW - 28);
       }
       ctx.restore();
 
       const btnTitle = isSpar ? '发起切磋' : (st.arenaTickets > 0 ? '发起挑战' : '挑战令不足');
-      const btnSub = isSpar ? '免费试阵 · 不变天梯名次' : (st.arenaTickets > 0 ? '消耗1张挑战令' : '点击上方看广告领取');
-      App.UI.drawButton(ctx, cx + 28, cy + 236, cardW - 56, 48, btnTitle, {
-        r: 10,
+      const btnSub = isSpar ? '免费试阵 · 不变天梯名次' : (st.arenaTickets > 0 ? '消耗 1 张挑战令' : '点击上方看广告领取');
+      App.UI.drawButton(ctx, cx + 24, cy + 306, cardW - 48, 54, btnTitle, {
+        r: 11,
         grad: isSpar ? ['#c2410c', '#7c2d12'] : ['#dc2626', '#991b1b'],
         border: '#fef08a',
-        fontSize: 15,
+        fontSize: 15.5,
         subText: btnSub,
         disabled: !isSpar && st.arenaTickets <= 0,
       }, () => {
@@ -282,7 +280,12 @@
       });
     });
 
-    App.Scenes.map.drawBottomNav(ctx, 'arena');
+    if (inSearch && searchPages > 1) {
+      App.UI.drawSidePageButtons(ctx, searchPage, searchPages, (p) => { searchPage = p; }, {
+        cy: 322, grad: ['#78350f', '#3b1806'], border: '#f59e0b',
+      });
+    }
+
     if (showLogs) drawLogs(ctx, W, H);
   }
 

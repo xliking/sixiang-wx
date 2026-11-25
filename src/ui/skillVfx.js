@@ -2123,6 +2123,14 @@
           zhuque:   { p1: 'vfx_fire',         p2: 'vfx_arrow_storm', tint: null },
           baihu:    { p1: 'vfx_tiger_roar',   p2: 'vfx_crimson_slash', tint: '#fbbf24' },
           xuanwu:   { p1: 'vfx_ice',          p2: 'vfx_water_tsunami', tint: '#38bdf8' },
+          taotie:   { p1: 'vfx_crimson_slash',p2: 'vfx_thunder', tint: '#c084fc' },
+          qiongqi:  { p1: 'vfx_tiger_roar',   p2: 'vfx_crimson_slash', tint: '#ef4444' },
+          taowu:    { p1: 'vfx_fire',         p2: 'vfx_tiger_roar', tint: '#f59e0b' },
+          hundun:   { p1: 'vfx_dragon_slash', p2: 'vfx_thunder', tint: '#f472b6' },
+          qilin:    { p1: 'vfx_holy_heal',    p2: 'vfx_fire', tint: '#facc15' },
+          baize:    { p1: 'vfx_ice',          p2: 'vfx_holy_heal', tint: '#67e8f9' },
+          kunpeng:  { p1: 'vfx_water_tsunami',p2: 'vfx_thunder', tint: '#60a5fa' },
+          zhulong:  { p1: 'vfx_fire',         p2: 'vfx_dragon_slash', tint: '#fbbf24' },
         };
         const bc = cfgMap[bid] || cfgMap.qinglong;
 

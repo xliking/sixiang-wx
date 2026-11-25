@@ -1,16 +1,17 @@
 (function (root) {
   const App = (root.SiXiang = root.SiXiang || {});
 
+  // 紫微珍宝阁采用尊贵竖版圣坛展台卡（4列 × 2排 = 8尊展台），与铜钱集市横版木牌彻底区分
   const COLS = 4;
-  const ROWS = 3;
-  const PAGE_SIZE = COLS * ROWS; // 3 排 × 4 列 = 12 件精品
+  const ROWS = 2;
+  const PAGE_SIZE = COLS * ROWS;
 
   const TABS = [
-    { id: 'all', label: '全部精品' },
-    { id: 'hero', label: 'SSR/UR神将' },
-    { id: 'equip', label: '无双神兵' },
-    { id: 'chest', label: '传世秘匣' },
-    { id: 'treasure', label: '仙丹至宝' },
+    { id: 'all', label: '全部臻品' },
+    { id: 'hero', label: 'S~SSS神将' },
+    { id: 'equip', label: '传世神兵' },
+    { id: 'chest', label: '皇家秘匣' },
+    { id: 'treasure', label: '神丹法宝' },
   ];
 
   let lastOpenAt = 0;
@@ -44,7 +45,6 @@
   }
 
   const FIT_CACHE = new Map();
-  const CLAMP_CACHE = new Map();
 
   function fitSingleLine(ctx, text, maxW) {
     const str = String(text || '');
@@ -67,74 +67,54 @@
     return res;
   }
 
-  function drawClampedLines(ctx, text, x, y, maxW, lineH, maxLines) {
-    const str = String(text || '');
-    if (!str) return;
-    const key = ctx.font + '|' + Math.round(maxW) + '|' + maxLines + '|' + str;
-    let rows = CLAMP_CACHE.get(key);
-    if (!rows) {
-      rows = [];
-      const chars = Array.from(str);
-      let line = '';
-      for (let i = 0; i < chars.length; i++) {
-        const test = line + chars[i];
-        if (ctx.measureText(test).width > maxW && line.length > 0) {
-          if (rows.length + 1 >= maxLines) {
-            rows.push(fitSingleLine(ctx, line + chars.slice(i).join(''), maxW));
-            line = '';
-            break;
-          }
-          rows.push(line);
-          line = chars[i];
-        } else {
-          line = test;
-        }
-      }
-      if (line && rows.length < maxLines) rows.push(line);
-      if (CLAMP_CACHE.size >= 400) CLAMP_CACHE.delete(CLAMP_CACHE.keys().next().value);
-      CLAMP_CACHE.set(key, rows);
-    }
-    for (let r = 0; r < rows.length; r++) {
-      ctx.fillText(rows[r], x, y + r * lineH);
-    }
-  }
-
   function getOfferAccent(of) {
-    const q = of.quality || (of.price >= 85 ? 'supreme' : (of.price >= 65 ? 'mythic' : (of.price >= 18 ? 'gold' : 'purple')));
+    const q = of.quality || (of.price >= 85 ? 'supreme' : (of.price >= 55 ? 'mythic' : (of.price >= 18 ? 'gold' : 'purple')));
     if (q === 'supreme') {
-      return { bg: '#3f1210', border: '#facc15', tagBg: '#dc2626', titleCol: '#fef08a', descCol: '#fde68a', btnGrad: ['#dc2626', '#991b1b'], qLabel: '至尊臻品' };
+      return {
+        topGrad: ['#4c0519', '#1e0b2b'], border: '#facc15', halo: 'rgba(250, 204, 21, 0.34)',
+        tagBg: '#be123c', titleCol: '#fef08a', descCol: '#fbcfe8', btnGrad: ['#dc2626', '#881337'], qLabel: '至尊圣品',
+      };
     }
     if (q === 'mythic') {
-      return { bg: '#381a0c', border: '#fbbf24', tagBg: '#b45309', titleCol: '#fef08a', descCol: '#fde68a', btnGrad: ['#d97706', '#92400e'], qLabel: '无双名器' };
+      return {
+        topGrad: ['#431407', '#1d0d2e'], border: '#fbbf24', halo: 'rgba(251, 146, 60, 0.30)',
+        tagBg: '#b45309', titleCol: '#fef08a', descCol: '#fde68a', btnGrad: ['#d97706', '#92400e'], qLabel: '无双名器',
+      };
     }
     if (q === 'gold') {
-      return { bg: '#f6e2ae', border: '#d97706', tagBg: '#b45309', titleCol: '#451a03', descCol: '#78350f', btnGrad: ['#b45309', '#7c2d12'], qLabel: '传世金品' };
+      return {
+        topGrad: ['#3b1d5e', '#170b28'], border: '#eab308', halo: 'rgba(234, 179, 8, 0.24)',
+        tagBg: '#7e22ce', titleCol: '#fef08a', descCol: '#e9d5ff', btnGrad: ['#ca8a04', '#854d0e'], qLabel: '皇家金品',
+      };
     }
-    return { bg: '#f0dfbe', border: '#9333ea', tagBg: '#6d28d9', titleCol: '#3b1806', descCol: '#581c87', btnGrad: ['#9a3412', '#7c2d12'], qLabel: '史诗精品' };
+    return {
+      topGrad: ['#2e1065', '#130921'], border: '#c084fc', halo: 'rgba(192, 132, 252, 0.24)',
+      tagBg: '#6d28d9', titleCol: '#f3e8ff', descCol: '#d8b4fe', btnGrad: ['#7e22ce', '#4c1d95'], qLabel: '紫微奇珍',
+    };
   }
 
   function drawArtifactIcon(ctx, aid, x, y, sz, border) {
     const art = App.Config.ARTIFACTS && App.Config.ARTIFACTS[aid];
     const img = art && art.imgKey ? App.Assets.get(art.imgKey) : null;
     ctx.save();
-    App.UI.roundRect(ctx, x, y, sz, sz, 8);
+    App.UI.roundRect(ctx, x, y, sz, sz, 11);
     ctx.clip();
-    ctx.fillStyle = '#451a03';
+    ctx.fillStyle = '#2e1065';
     ctx.fillRect(x, y, sz, sz);
     if (img) {
       ctx.drawImage(img, x, y, sz, sz);
     } else {
       ctx.fillStyle = '#fde047';
-      ctx.font = 'bold 15px "PingFang SC", serif';
+      ctx.font = 'bold 16px "PingFang SC", serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(art ? art.name.slice(0, 2) : '至宝', x + sz / 2, y + sz / 2);
     }
     ctx.restore();
     ctx.save();
-    App.UI.roundRect(ctx, x, y, sz, sz, 8);
+    App.UI.roundRect(ctx, x, y, sz, sz, 11);
     ctx.strokeStyle = border || '#facc15';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.2;
     ctx.stroke();
     ctx.restore();
   }
@@ -145,16 +125,33 @@
     const st = App.State.get();
     const rawOffers = App.State.getIngotShopOffers();
 
-    // 玄金华贵底色
-    ctx.fillStyle = '#241208';
+    // 皇家暗夜紫微星阙底色
+    ctx.fillStyle = '#0b0516';
     ctx.fillRect(0, 0, W, H);
     App.Scenes.map.drawTopBar(ctx);
 
-    // 元宝商店大面板
-    App.UI.drawPanel(ctx, 14, 58, W - 28, H - 66, { r: 14, bg: '#f5e7c4', border: '#d97706', lineWidth: 2.2 });
+    // 紫微秘殿大画框（y=58..532 满屏铺展，无底部留白）
+    ctx.save();
+    App.UI.roundRect(ctx, 26, 58, W - 52, 474, 15);
+    const hallGrad = ctx.createLinearGradient(26, 58, 26, 532);
+    hallGrad.addColorStop(0, '#220e3b');
+    hallGrad.addColorStop(0.5, '#150826');
+    hallGrad.addColorStop(1, '#0d051a');
+    ctx.fillStyle = hallGrad;
+    ctx.fill();
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
 
-    // 顶部招牌、分类筛选与互转/刷新栏
-    App.UI.drawPanel(ctx, 22, 64, W - 44, 42, { r: 9, bg: '#3b1307', border: '#fbbf24', lineWidth: 1.8 });
+    // 内层紫金星辉暗线框
+    App.UI.roundRect(ctx, 31, 63, W - 62, 464, 12);
+    ctx.strokeStyle = 'rgba(192, 132, 252, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+
+    // 顶部紫微帝阙横匾
+    App.UI.drawPanel(ctx, 36, 66, W - 72, 42, { r: 10, bg: '#2b0d46', border: '#facc15', lineWidth: 1.8 });
     const remainSec = App.State.getIngotShopRefreshSeconds();
     if ((!rawOffers.length || remainSec <= 0) && Date.now() - lastOpenAt > 3000) {
       lastOpenAt = Date.now();
@@ -163,26 +160,26 @@
     const mm = String(Math.floor(remainSec / 60)).padStart(2, '0');
     const ss = String(remainSec % 60).padStart(2, '0');
 
+    App.UI.drawMiniIcon(ctx, 'res_ingot', 44, 73, 28);
     ctx.save();
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fde047';
-    ctx.font = 'bold 13.5px "PingFang SC", serif';
-    ctx.fillText('元宝商店', 32, 82);
-    ctx.fillStyle = '#fde68a';
-    ctx.font = '9.5px "PingFang SC", sans-serif';
-    ctx.fillText(`10元宝起·${mm}:${ss}`, 32, 98);
+    ctx.font = 'bold 14.5px "PingFang SC", serif';
+    ctx.fillText('紫微珍宝阁', 76, 84);
+    ctx.fillStyle = '#e9d5ff';
+    ctx.font = '10px "PingFang SC", sans-serif';
+    ctx.fillText(`秘殿轮换 ${mm}:${ss}`, 76, 100);
     ctx.restore();
 
-    let tabX = 110;
+    let tabX = 166;
     TABS.forEach((tb) => {
       const isCur = activeTab === tb.id;
-      const bw = tb.id === 'hero' ? 76 : 66;
-      App.UI.drawButton(ctx, tabX, 71, bw, 28, tb.label, {
+      App.UI.drawButton(ctx, tabX, 73, 70, 28, tb.label, {
         r: 7,
-        grad: isCur ? ['#dc2626', '#991b1b'] : undefined,
-        bg: isCur ? undefined : 'rgba(22, 9, 4, 0.78)',
-        border: isCur ? '#fef08a' : 'rgba(251, 191, 36, 0.45)',
-        color: isCur ? '#fffbeb' : '#fde68a',
+        grad: isCur ? ['#be123c', '#6b21a8'] : undefined,
+        bg: isCur ? undefined : 'rgba(15, 6, 28, 0.78)',
+        border: isCur ? '#fef08a' : 'rgba(192, 132, 252, 0.45)',
+        color: isCur ? '#fffbeb' : '#e9d5ff',
         fontSize: 10.5,
       }, () => {
         if (activeTab !== tb.id) {
@@ -190,40 +187,38 @@
           pageIdx = 0;
         }
       });
-      tabX += bw + 4;
+      tabX += 74;
     });
 
-    // 右侧：货币互转 + 铜钱商城 + 元宝刷新 + 免费刷新 + 返回
-    App.UI.drawButton(ctx, W - 486, 70, 76, 30, '货币互转', {
-      r: 7, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 10.5,
+    // 右侧快捷操作 + 右上角 ✕ 关闭按钮
+    App.UI.drawButton(ctx, W - 420, 73, 68, 28, '货币互转', {
+      r: 7, grad: ['#ca8a04', '#854d0e'], border: '#fef08a', fontSize: 10,
     }, () => {
       if (App.UI && App.UI.openExchangeModal) App.UI.openExchangeModal();
     });
 
-    App.UI.drawButton(ctx, W - 406, 70, 74, 30, '铜钱商城', {
-      r: 7, bg: '#5c2c16', border: '#d4a34b', fontSize: 10.5,
+    App.UI.drawButton(ctx, W - 348, 73, 72, 28, '铜钱集市', {
+      r: 7, bg: '#3b1c5a', border: '#c084fc', fontSize: 10,
     }, () => App.Main.goScene('shop'));
 
     const refCost = App.State.INGOT_SHOP_REFRESH_COST;
-    App.UI.drawButton(ctx, W - 328, 70, 96, 30, `刷新(${refCost}元宝)`, {
-      r: 7, grad: ['#b45309', '#78350f'], border: '#fef08a', fontSize: 10.5,
+    App.UI.drawButton(ctx, W - 272, 73, 88, 28, `刷新(${refCost}元宝)`, {
+      r: 7, grad: ['#7e22ce', '#4c1d95'], border: '#f5d0fe', fontSize: 10,
     }, () => {
       pageIdx = 0;
       App.State.refreshIngotShop(false);
     });
 
-    App.UI.drawAdButton(ctx, W - 228, 70, 124, 30, '免费刷UR神将', {
-      r: 7, fontSize: 10,
+    App.UI.drawAdButton(ctx, W - 180, 73, 98, 28, '免费刷SSS神将', {
+      r: 7, fontSize: 9.5,
     }, () => {
-      App.Platform.showRewardedAd('stamina', '观看激励视频，免费刷新元宝商店并必出 UR 至尊神将与传世至宝！', () => {
+      App.Platform.showRewardedAd('stamina', '观看激励视频，免费刷新元宝商店并必出 SSS 至尊神将与传世至宝！', () => {
         pageIdx = 0;
         App.State.refreshIngotShop(true);
       });
     });
 
-    App.UI.drawButton(ctx, W - 100, 70, 70, 30, '◀ 返回', {
-      r: 7, bg: '#5c2c16', border: '#fde047', fontSize: 10.5,
-    }, () => App.Main.goScene('map'));
+    App.UI.drawCloseButton(ctx, W - 74, 71, 32, () => App.Main.goScene('map'));
 
     const filtered = [];
     rawOffers.forEach((of, idx) => {
@@ -236,16 +231,17 @@
     const pageItems = filtered.slice(pageIdx * PAGE_SIZE, (pageIdx + 1) * PAGE_SIZE);
 
     if (!rawOffers.length) {
-      App.UI.drawPanelLoading(ctx, W / 2, 290, '正在开启皇家珍宝阁，清点传世精品…');
+      App.UI.drawPanelLoading(ctx, W / 2, 296, '正在开启紫微珍宝阁，清点皇家秘宝…');
       return;
     }
 
-    const startX = 22;
-    const startY = 112;
-    const gapX = 10;
-    const gapY = 8;
-    const cardW = 221;
-    const cardH = 115;
+    // ★ 4列 × 2排 竖版皇家莲台展柜卡（居中宝光底座 + 顶部玉牌 + 底部鎏金元宝圣召键）
+    const startX = 38;
+    const startY = 116;
+    const gapX = 12;
+    const gapY = 12;
+    const cardW = 212;
+    const cardH = 196;
 
     pageItems.forEach((entry, slot) => {
       const of = entry.of;
@@ -257,107 +253,132 @@
       const isHero = of.kind === 'hero';
       const acc = getOfferAccent(of);
 
-      App.UI.drawPanel(ctx, cx, cy, cardW, cardH, {
-        r: 9,
-        bg: of.sold ? 'rgba(92, 74, 56, 0.42)' : acc.bg,
-        border: of.sold ? '#78716c' : acc.border,
-        lineWidth: 1.8,
-      });
+      // 竖版深紫鎏金展台底板
+      ctx.save();
+      App.UI.roundRect(ctx, cx, cy, cardW, cardH, 12);
+      if (of.sold) {
+        ctx.fillStyle = 'rgba(30, 20, 44, 0.62)';
+      } else {
+        const cg = ctx.createLinearGradient(cx, cy, cx, cy + cardH);
+        cg.addColorStop(0, acc.topGrad[0]);
+        cg.addColorStop(1, acc.topGrad[1]);
+        ctx.fillStyle = cg;
+      }
+      ctx.fill();
+      ctx.strokeStyle = of.sold ? '#64748b' : acc.border;
+      ctx.lineWidth = of.sold ? 1.2 : 2.0;
+      ctx.stroke();
 
-      const iconX = cx + 8;
-      const iconY = cy + 16;
-      const iconSz = 52;
+      // 居中宝光神环与莲花底座
+      const midX = cx + cardW / 2;
+      const iconSz = 66;
+      const iconX = Math.round(midX - iconSz / 2);
+      const iconY = cy + 30;
+      if (!of.sold) {
+        const hg = ctx.createRadialGradient(midX, iconY + iconSz / 2, 6, midX, iconY + iconSz / 2, 54);
+        hg.addColorStop(0, acc.halo);
+        hg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = hg;
+        ctx.beginPath();
+        ctx.arc(midX, iconY + iconSz / 2, 54, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 鎏金展台托盘光弧
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.48)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(midX, iconY + iconSz + 3, 44, 8, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // 居中大图展示
       if (isHero) {
-        App.Portraits.drawGeneralPortrait(ctx, of.id, iconX, iconY, iconSz, { radius: 8, border: acc.border, lineWidth: 2 });
+        App.Portraits.drawGeneralPortrait(ctx, of.id, iconX, iconY, iconSz, { radius: 11, border: acc.border, lineWidth: 2.2 });
       } else if (of.kind === 'artifact') {
         drawArtifactIcon(ctx, of.id, iconX, iconY, iconSz, acc.border);
       } else if (of.kind === 'item' || of.kind === 'equip') {
-        App.Sprites.drawEquipIcon(ctx, of.id, iconX, iconY, iconSz, { radius: 8, border: acc.border, lineWidth: 1.8 });
+        App.Sprites.drawEquipIcon(ctx, of.id, iconX, iconY, iconSz, { radius: 11, border: acc.border, lineWidth: 2.0 });
       } else {
         ctx.save();
-        App.UI.roundRect(ctx, iconX, iconY, iconSz, iconSz, 8);
+        App.UI.roundRect(ctx, iconX, iconY, iconSz, iconSz, 11);
         ctx.fillStyle = '#3b0764';
         ctx.fill();
         ctx.strokeStyle = '#facc15';
-        ctx.lineWidth = 1.8;
+        ctx.lineWidth = 2.0;
         ctx.stroke();
-        App.UI.drawMiniIcon(ctx, 'res_soul', iconX + 9, iconY + 9, 36);
+        App.UI.drawMiniIcon(ctx, 'res_soul', iconX + 13, iconY + 13, 40);
         ctx.restore();
       }
 
+      // 顶部居中皇室品阶铭牌
       const tagText = of.tag || acc.qLabel;
       if (tagText) {
         ctx.save();
-        ctx.font = 'bold 8.5px "PingFang SC", sans-serif';
-        const tagW = Math.min(72, Math.max(44, Math.ceil(ctx.measureText(tagText).width + 10)));
-        ctx.fillStyle = of.sold ? '#57534e' : acc.tagBg;
-        App.UI.roundRect(ctx, cx + 6, cy + 5, tagW, 14, 4);
+        ctx.font = 'bold 9px "PingFang SC", sans-serif';
+        const tagW = Math.min(92, Math.max(54, Math.ceil(ctx.measureText(tagText).width + 14)));
+        ctx.fillStyle = of.sold ? '#475569' : acc.tagBg;
+        App.UI.roundRect(ctx, midX - tagW / 2, cy + 7, tagW, 17, 8);
         ctx.fill();
+        ctx.strokeStyle = 'rgba(254, 240, 138, 0.65)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
         ctx.fillStyle = '#fef08a';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(tagText, cx + 6 + tagW / 2, cy + 12, tagW - 4);
+        ctx.fillText(tagText, midX, cy + 15.5, tagW - 6);
         ctx.restore();
       }
 
-      const txtX = cx + 68;
-      const txtW = cardW - 76;
+      // 居中商品圣名 + 单行精炼效用胶囊（告别密集文字块）
       ctx.save();
-      ctx.textAlign = 'left';
-      ctx.fillStyle = of.sold ? '#57534e' : acc.titleCol;
-      ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
-      ctx.fillText(fitSingleLine(ctx, of.title, txtW), txtX, cy + 24);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = of.sold ? '#94a3b8' : acc.titleCol;
+      ctx.font = 'bold 13px "PingFang SC", serif';
+      ctx.fillText(fitSingleLine(ctx, of.title, cardW - 20), midX, cy + 116);
 
-      ctx.fillStyle = of.sold ? '#78716c' : acc.descCol;
-      ctx.font = '9.5px "PingFang SC", sans-serif';
-      drawClampedLines(ctx, of.desc, txtX, cy + 40, txtW, 13, 2);
+      ctx.fillStyle = 'rgba(10, 4, 20, 0.55)';
+      App.UI.roundRect(ctx, cx + 10, cy + 125, cardW - 20, 21, 6);
+      ctx.fill();
+      ctx.fillStyle = of.sold ? '#64748b' : acc.descCol;
+      ctx.font = '10px "PingFang SC", sans-serif';
+      ctx.fillText(fitSingleLine(ctx, of.desc, cardW - 28), midX, cy + 139);
       ctx.restore();
 
+      // 底部皇家元宝购入按钮
       const price = Math.max(10, Number(of.price) || 10);
       const canAfford = (st.ingot || 0) >= price;
       const btnLabel = of.sold
         ? '✓ 已收入囊中'
-        : `${price} 元宝${isHero ? '圣召' : '购入'}`;
-      App.UI.drawButton(ctx, cx + 8, cy + 77, cardW - 16, 30, btnLabel, {
-        r: 7,
+        : `   ${price} 元宝${isHero ? '圣召' : '迎请'}`;
+      App.UI.drawButton(ctx, cx + 14, cy + 154, cardW - 28, 33, btnLabel, {
+        r: 9,
         grad: of.sold ? undefined : acc.btnGrad,
-        bg: of.sold ? '#6b5e4c' : undefined,
-        border: of.sold ? '#a8a29e' : (canAfford ? '#fef08a' : '#fca5a5'),
-        color: of.sold ? '#e7e5e4' : (canAfford ? '#fffbeb' : '#fecaca'),
-        fontSize: 11,
+        bg: of.sold ? '#334155' : undefined,
+        border: of.sold ? '#64748b' : (canAfford ? '#fef08a' : '#f87171'),
+        color: of.sold ? '#cbd5e1' : (canAfford ? '#fffbeb' : '#fecaca'),
+        fontSize: 11.5,
         disabled: of.sold,
       }, () => {
         if (!canAfford) {
-          App.UI.showToast(`元宝不足 ${price}（当前 ${st.ingot || 0}），点击上方【货币互转】可用铜钱换算！`, '#fde047');
+          App.UI.showToast(`元宝不足 ${price}（当前 ${st.ingot || 0}），可点上方【货币互转】换算！`, '#fde047');
           return;
         }
         App.State.buyIngotShopOffer(entry.realIdx);
       });
       if (!of.sold) {
-        App.UI.drawMiniIcon(ctx, 'res_ingot', cx + 18, cy + 83, 18);
+        App.UI.drawMiniIcon(ctx, 'res_ingot', cx + 26, cy + 162, 17);
       }
     });
 
-    // 底部分页与汇率说明条
-    App.UI.drawPanel(ctx, 22, 482, W - 44, 42, { r: 9, bg: 'rgba(48, 18, 8, 0.94)', border: '#d97706', lineWidth: 1.5 });
-    ctx.save();
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#fde68a';
-    ctx.font = 'bold 11px "PingFang SC", sans-serif';
-    ctx.fillText(
-      `第 ${pageIdx + 1}/${totalPages} 页 · 共 ${filtered.length} 件精品（1元宝=${App.State.INGOT_EXCHANGE_RATE}铜钱）`,
-      34,
-      503
-    );
-    ctx.restore();
-
-    App.UI.drawPagination(ctx, 376, 489, 550, 28, pageIdx, totalPages, (nextP) => {
+    // 左右两侧皇家紫金翻页按钮
+    App.UI.drawSidePageButtons(ctx, pageIdx, totalPages, (nextP) => {
       pageIdx = nextP;
     }, {
-      bg: '#4a2511',
-      border: '#b45309',
-      activeGrad: ['#dc2626', '#991b1b'],
+      cy: 318,
+      grad: ['#6b21a8', '#2e1065'],
+      border: '#facc15',
+      arrowColor: '#fef08a',
     });
   }
 

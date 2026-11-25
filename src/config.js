@@ -678,7 +678,12 @@
       .sort((a, b) => a.order - b.order).map((s) => buildStage(s.order));
   }
 
-  const BEAST_TIER_UNLOCK = { qinglong: 15, zhuque: 20, xuanwu: 25, baihu: 30 };
+  const FOUR_SYMBOL_BEAST_IDS = ['qinglong', 'zhuque', 'xuanwu', 'baihu'];
+  const BEAST_TIER_UNLOCK = {
+    qinglong: 15, zhuque: 20, xuanwu: 25, baihu: 30,
+    taotie: 36, qiongqi: 42, taowu: 48, hundun: 54,
+    qilin: 60, baize: 66, kunpeng: 72, zhulong: 80,
+  };
 
   function getBeastUnlockLv(beastId) {
     const tier = BEAST_TIER_UNLOCK[beastId] || 15;
@@ -755,17 +760,17 @@
     return Math.max(100, Math.round((basePower || 0) * ratio));
   }
 
-  /** 解析武将仙/魔飞升属性与外观信息（与服务端 GameRules.ascendStatMult / ascendTacBonus 完全一致） */
+  /** 解析武将神/魔飞升属性与外观信息（与服务端 GameRules.ascendStatMult / ascendTacBonus 完全一致） */
   function getAscendInfo(gNode) {
     const path = gNode && gNode.ascend;
     if (path !== 'xian' && path !== 'mo') return null;
     const ac = C.ASCENSION || {};
     const tier = Math.max(1, Number(gNode.ascendTier) || 1);
     const t = tier - 1;
-    const statMult = 1 + (ac.baseStatMult != null ? ac.baseStatMult : 0.28) + t * (ac.tierStatStep != null ? ac.tierStatStep : 0.12);
+    const statMult = 1 + (ac.baseStatMult != null ? ac.baseStatMult : 0.35) + t * (ac.tierStatStep != null ? ac.tierStatStep : 0.15);
     const sub = (ac[path]) || {};
     const defTitles = path === 'xian'
-      ? ['真仙', '玄仙', '金仙', '太乙仙尊', '九天仙帝']
+      ? ['真神', '天神', '神王', '太古神尊', '九天神帝']
       : ['真魔', '玄魔', '天魔', '混世魔尊', '九幽魔帝'];
     const titles = Array.isArray(sub.titles) && sub.titles.length ? sub.titles : defTitles;
     const realm = titles[Math.min(titles.length - 1, t)] || `${tier}重`;
@@ -774,28 +779,28 @@
       path,
       tier,
       realm,
-      title: `${isXian ? '仙' : '魔'}·${realm}`,
-      shortTag: `${isXian ? '仙' : '魔'}${tier}重`,
-      glyph: isXian ? '仙' : '魔',
+      title: `${isXian ? '神' : '魔'}·${realm}`,
+      shortTag: `${isXian ? '神' : '魔'}${tier}重`,
+      glyph: isXian ? '神' : '魔',
       color: isXian ? '#67e8f9' : '#f472b6',
       bg: isXian ? '#0f4c5c' : '#581c87',
       border: isXian ? '#fde047' : '#fb7185',
       statMult,
-      crit: isXian ? ((sub.critBase ?? 0.04) + t * (sub.critStep ?? 0.015)) : ((sub.critBase ?? 0.06) + t * (sub.critStep ?? 0.02)),
-      critDmg: isXian ? 0 : ((sub.critDmgBase ?? 0.18) + t * (sub.critDmgStep ?? 0.07)),
-      lifesteal: isXian ? 0 : ((sub.lifestealBase ?? 0.07) + t * (sub.lifestealStep ?? 0.03)),
-      dmgReduce: isXian ? ((sub.dmgReduceBase ?? 0.08) + t * (sub.dmgReduceStep ?? 0.03)) : 0,
-      skillDmgPct: isXian ? ((sub.skillDmgBase ?? 0.12) + t * (sub.skillDmgStep ?? 0.05)) : 0,
-      spdPct: isXian ? 0 : ((sub.spdPctBase ?? 0.10) + t * (sub.spdPctStep ?? 0.04)),
-      initRage: isXian ? ((sub.initRageBase ?? 15) + t * (sub.initRageStep ?? 5)) : 0,
+      crit: isXian ? ((sub.critBase ?? 0.05) + t * (sub.critStep ?? 0.015)) : ((sub.critBase ?? 0.07) + t * (sub.critStep ?? 0.02)),
+      critDmg: isXian ? 0 : ((sub.critDmgBase ?? 0.20) + t * (sub.critDmgStep ?? 0.07)),
+      lifesteal: isXian ? 0 : ((sub.lifestealBase ?? 0.08) + t * (sub.lifestealStep ?? 0.03)),
+      dmgReduce: isXian ? ((sub.dmgReduceBase ?? 0.09) + t * (sub.dmgReduceStep ?? 0.03)) : 0,
+      skillDmgPct: isXian ? ((sub.skillDmgBase ?? 0.14) + t * (sub.skillDmgStep ?? 0.05)) : 0,
+      spdPct: isXian ? 0 : ((sub.spdPctBase ?? 0.11) + t * (sub.spdPctStep ?? 0.04)),
+      initRage: isXian ? ((sub.initRageBase ?? 16) + t * (sub.initRageStep ?? 5)) : 0,
       auraVfx: {
         setId: isXian ? '__ascend_xian__' : '__ascend_mo__',
-        name: isXian ? `九天仙罡·${realm}` : `九幽魔煞·${realm}`,
+        name: isXian ? `九天神罡·${realm}` : `九幽魔煞·${realm}`,
         quality: 'gold',
         count: 6,
         total: 6,
         auraVfx: isXian ? 'jade_vitality' : 'shadow_phantom',
-        auraName: isXian ? `九天仙罡·${realm}` : `九幽魔煞·${realm}`,
+        auraName: isXian ? `九天神罡·${realm}` : `九幽魔煞·${realm}`,
         auraColor: isXian ? '#67e8f9' : '#e879f9',
         auraSubColor: isXian ? '#fef08a' : '#fb7185',
         auraTex: isXian ? 'vfx_holy_heal' : 'vfx_crimson_slash',
@@ -804,12 +809,33 @@
     };
   }
 
+  /** 获取武将品阶展示文案：未飞升为 B~SSS，成神为 B.神~SSS.神，成魔为 B.魔~SSS.魔 */
+  function getRarityLabel(gidOrRarity, gNode) {
+    const g = (C.GENERALS && C.GENERALS[gidOrRarity]) || null;
+    const base = g ? (g.rarity || 'B') : (gidOrRarity || 'B');
+    const asc = gNode && (typeof gNode === 'string' ? gNode : (gNode.ascend || (gNode.ascendInfo && gNode.ascendInfo.path)));
+    if (asc === 'xian') return `${base}.神`;
+    if (asc === 'mo') return `${base}.魔`;
+    return base;
+  }
+
+  function getRarityColor(rarity, ascendPath) {
+    if (ascendPath === 'xian') return '#67e8f9';
+    if (ascendPath === 'mo') return '#f472b6';
+    if (rarity === 'SSS') return '#f43f5e';
+    if (rarity === 'SS') return '#facc15';
+    if (rarity === 'S') return '#c084fc';
+    if (rarity === 'A') return '#38bdf8';
+    if (rarity === 'B') return '#4ade80';
+    return '#94a3b8';
+  }
+
   App.Config = Object.assign(C, {
-    SET_AURA_META, WEAPON_ATK_META,
+    SET_AURA_META, WEAPON_ATK_META, FOUR_SYMBOL_BEAST_IDS,
     load, getEquipBonus, getEquipSellPrice, computeSetBonus, resolveSetVfx, resolveWeaponVfx, computeArtifactBonus,
     getArtifactMaterialProgress, canUnlockArtifact,
     getTroopCard, getTroopMeta, getGeneralTroopId, getGeneralTroopCard, getGeneralTroopMeta, resolveGeneralCombatProfile,
     getChapterMapTheme, resolveBattleBgKey, getChapterInfo, buildStage, getChapterStages, getBeastUnlockLv, getBeastDungeons,
-    getModeDifficulty, scaleRecommendedPower, getAscendInfo,
+    getModeDifficulty, scaleRecommendedPower, getAscendInfo, getRarityLabel, getRarityColor,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : window);
