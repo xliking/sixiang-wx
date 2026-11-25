@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>四象三国志 · 横版军团策略微信小游戏</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>群英志 · 微信小游戏</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
     html, body {
@@ -35,38 +38,57 @@
     <canvas id="gameCanvas"></canvas>
   </div>
 
-  <script src="src/platform.js?v=104"></script>
-  <script src="src/audio.js?v=104"></script>
-  <script src="src/crypto.js?v=104"></script>
-  <script src="src/api.js?v=104"></script>
-  <script src="src/config.js?v=104"></script>
-  <script src="src/assets.js?v=106"></script>
-  <script src="src/state/gameState.js?v=104"></script>
-  <script src="src/ui/drawUtils.js?v=106"></script>
-  <script src="src/ui/portraits.js?v=106"></script>
-  <script src="src/ui/skillVfx.js?v=106"></script>
-  <script src="src/ui/sprites.js?v=106"></script>
-  <script src="src/engine/battleEngine.js?v=106"></script>
-  <script src="src/scenes/nameScene.js?v=104"></script>
-  <script src="src/scenes/factionScene.js?v=104"></script>
-  <script src="src/scenes/mapScene.js?v=106"></script>
-  <script src="src/scenes/battleScene.js?v=106"></script>
-  <script src="src/scenes/rosterScene.js?v=106"></script>
-  <script src="src/scenes/warehouseScene.js?v=104"></script>
-  <script src="src/scenes/beastDungeonScene.js?v=106"></script>
-  <script src="src/scenes/arenaScene.js?v=106"></script>
-  <script src="src/scenes/beastScene.js?v=106"></script>
-  <script src="src/scenes/activityScene.js?v=106"></script>
-  <script src="src/scenes/wheelScene.js?v=106"></script>
-  <script src="src/scenes/shopScene.js?v=106"></script>
-  <script src="src/scenes/mailScene.js?v=104"></script>
-  <script src="src/scenes/forgeScene.js?v=106"></script>
-  <script src="src/scenes/demonScene.js?v=106"></script>
-  <script src="src/scenes/campScene.js?v=106"></script>
-  <script src="src/scenes/towerScene.js?v=106"></script>
-  <script src="src/scenes/challengeScene.js?v=106"></script>
-  <script src="src/scenes/marketScene.js?v=104"></script>
-  <script src="src/main.js?v=106"></script>
+  <script>
+    (function () {
+      var isDev = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+      var ver = isDev ? ('124_' + Date.now()) : '124';
+      var scripts = [
+        'src/platform.js',
+        'src/audio.js',
+        'src/crypto.js',
+        'src/api.js',
+        'src/config.js',
+        'src/assets.js',
+        'src/state/gameState.js',
+        'src/ui/drawUtils.js',
+        'src/ui/compliance.js',
+        'src/ui/portraits.js',
+        'src/ui/skillVfx.js',
+        'src/ui/sprites.js',
+        'src/engine/battleEngine.js',
+        'src/scenes/nameScene.js',
+        'src/scenes/factionScene.js',
+        'src/scenes/mapScene.js',
+        'src/scenes/battleScene.js',
+        'src/scenes/rosterScene.js',
+        'src/scenes/warehouseScene.js',
+        'src/scenes/beastDungeonScene.js',
+        'src/scenes/arenaScene.js',
+        'src/scenes/beastScene.js',
+        'src/scenes/activityScene.js',
+        'src/scenes/wheelScene.js',
+        'src/scenes/shopScene.js',
+        'src/scenes/ingotShopScene.js',
+        'src/scenes/mailScene.js',
+        'src/scenes/forgeScene.js',
+        'src/scenes/demonScene.js',
+        'src/scenes/campScene.js',
+        'src/scenes/towerScene.js',
+        'src/scenes/challengeScene.js',
+        'src/scenes/marketScene.js',
+        'src/scenes/hireScene.js',
+        'src/scenes/rankScene.js',
+        'src/scenes/worldBossScene.js',
+        'src/scenes/guildScene.js',
+        'src/scenes/inviteScene.js',
+        'src/scenes/settingsScene.js',
+        'src/main.js'
+      ];
+      for (var i = 0; i < scripts.length; i++) {
+        document.write('<script src="' + scripts[i] + '?v=' + ver + '"><\/script>');
+      }
+    })();
+  </script>
   <script>
     window.SiXiang.Main.start();
   </script>

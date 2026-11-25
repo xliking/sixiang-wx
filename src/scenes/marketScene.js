@@ -7,10 +7,16 @@
   let total = 0;
   let page = 1;
   let sellPage = 0;
+  let loading = false;
 
   async function load() {
-    const res = await App.API.get(tab === 'mine' ? '/api/market/mine' : '/api/market/list?page=' + page);
-    if (res && res.ok) { list = res.list || []; total = res.total || list.length; }
+    loading = true;
+    try {
+      const res = await App.API.get(tab === 'mine' ? '/api/market/mine' : '/api/market/list?page=' + page);
+      if (res && res.ok) { list = res.list || []; total = res.total || list.length; }
+    } finally {
+      loading = false;
+    }
   }
 
   function enter() { tab = 'browse'; page = 1; list = []; load(); }
@@ -22,12 +28,7 @@
   }
 
   function drawIcon(ctx, kind, id, x, y, size) {
-    if (kind === 'equip') return App.Sprites.drawEquipIcon(ctx, id, x, y, size, { radius: 7 });
-    const img = App.Assets.get((App.Config.ITEMS[id] || {}).imgKey);
-    ctx.save();
-    ctx.fillStyle = '#3b2112'; App.UI.roundRect(ctx, x, y, size, size, 7); ctx.fill();
-    if (img) { App.UI.roundRect(ctx, x, y, size, size, 7); ctx.clip(); ctx.drawImage(img, x, y, size, size); }
-    ctx.restore();
+    return App.Sprites.drawEquipIcon(ctx, id, x, y, size, { radius: 7 });
   }
 
   function sell(kind, id, label) {
@@ -54,7 +55,10 @@
         tab = id; page = 1; list = []; if (id !== 'sell') load();
       });
     });
-    ctx.save(); ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fde68a'; ctx.font = '11.5px "PingFang SC", sans-serif';
+    App.UI.drawButton(ctx, 392, 80, 118, 32, '⚔ 聚贤佣馆(租将)', {
+      r: 8, grad: ['#0f766e', '#115e59'], border: '#99f6e4', fontSize: 11.5,
+    }, () => App.Main.goScene('hire'));
+    ctx.save(); ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fde68a'; ctx.font = '11px "PingFang SC", sans-serif';
     ctx.fillText(`成交手续费 ${Math.round((cfg.taxRate || 0) * 100)}% · 最多同时上架 ${cfg.maxListings || 8} 件`, W - 120, 96); ctx.restore();
     App.UI.drawButton(ctx, W - 108, 79, 70, 34, '返回', { r: 8, bg: '#5c2c16', border: '#fde047', fontSize: 12 }, () => App.Main.goScene('map'));
 
@@ -74,10 +78,7 @@
         App.UI.addHit(x, y, 84, 130, () => sell(g.kind, g.id, g.label));
       });
       if (!goods.length) { ctx.save(); ctx.textAlign = 'center'; ctx.fillStyle = '#92400e'; ctx.font = '14px "PingFang SC", sans-serif'; ctx.fillText('仓库里没有可出售的道具或闲置装备', W / 2, 290); ctx.restore(); }
-      if (maxP > 0) {
-        App.UI.drawButton(ctx, W / 2 - 110, 426, 90, 30, '上一页', { r: 6, fontSize: 11, disabled: sellPage <= 0 }, () => { sellPage -= 1; });
-        App.UI.drawButton(ctx, W / 2 + 20, 426, 90, 30, '下一页', { r: 6, fontSize: 11, disabled: sellPage >= maxP }, () => { sellPage += 1; });
-      }
+      App.UI.drawPagination(ctx, W / 2 - 220, 428, 440, 28, sellPage, maxP + 1, (p) => { sellPage = p; });
     } else {
       const STATUS = ['出售中', '已售出', '已下架'];
       list.slice(0, 12).forEach((l, i) => {
@@ -95,10 +96,14 @@
           App.UI.drawButton(ctx, x + 366, y + 7, 72, 30, '下架', { r: 7, grad: ['#dc2626', '#991b1b'], border: '#fecaca', fontSize: 12 }, () => App.State.act('/api/market/cancel', { id: l.id }).then(load));
         }
       });
-      if (!list.length) { ctx.save(); ctx.textAlign = 'center'; ctx.fillStyle = '#92400e'; ctx.font = '14px "PingFang SC", sans-serif'; ctx.fillText(tab === 'mine' ? '你还没有摆过摊' : '坊市暂时没有货物，去摆第一个摊吧', W / 2, 290); ctx.restore(); }
-      if (tab === 'browse' && total > 12) {
-        App.UI.drawButton(ctx, W / 2 - 110, 430, 90, 28, '上一页', { r: 6, fontSize: 11, disabled: page <= 1 }, () => { page -= 1; load(); });
-        App.UI.drawButton(ctx, W / 2 + 20, 430, 90, 28, '下一页', { r: 6, fontSize: 11, disabled: page * 12 >= total }, () => { page += 1; load(); });
+      if (loading && !list.length) {
+        App.UI.drawPanelLoading(ctx, W / 2, 280, '正在查访九州坊市摊位…');
+      } else if (!list.length) {
+        ctx.save(); ctx.textAlign = 'center'; ctx.fillStyle = '#92400e'; ctx.font = '14px "PingFang SC", sans-serif'; ctx.fillText(tab === 'mine' ? '你还没有摆过摊' : '坊市暂时没有货物，去摆第一个摊吧', W / 2, 290); ctx.restore();
+      }
+      if (tab === 'browse') {
+        const totalBrowsePages = Math.max(1, Math.ceil((total || list.length) / 12));
+        App.UI.drawPagination(ctx, W / 2 - 220, 430, 440, 27, page - 1, totalBrowsePages, (p) => { page = p + 1; load(); });
       }
     }
     App.Scenes.map.drawBottomNav(ctx, '');

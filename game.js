@@ -1,4 +1,4 @@
-// 《四象三国志》微信小游戏横版入口
+// 《群英志》微信小游戏横版入口
 require('./src/platform.js');
 require('./src/audio.js');
 require('./src/crypto.js');
@@ -7,6 +7,7 @@ require('./src/config.js');
 require('./src/assets.js');
 require('./src/state/gameState.js');
 require('./src/ui/drawUtils.js');
+require('./src/ui/compliance.js');
 require('./src/ui/portraits.js');
 require('./src/ui/skillVfx.js');
 require('./src/ui/sprites.js');
@@ -23,6 +24,7 @@ require('./src/scenes/beastScene.js');
 require('./src/scenes/activityScene.js');
 require('./src/scenes/wheelScene.js');
 require('./src/scenes/shopScene.js');
+require('./src/scenes/ingotShopScene.js');
 require('./src/scenes/mailScene.js');
 require('./src/scenes/forgeScene.js');
 require('./src/scenes/demonScene.js');
@@ -30,6 +32,12 @@ require('./src/scenes/campScene.js');
 require('./src/scenes/towerScene.js');
 require('./src/scenes/challengeScene.js');
 require('./src/scenes/marketScene.js');
+require('./src/scenes/hireScene.js');
+require('./src/scenes/rankScene.js');
+require('./src/scenes/worldBossScene.js');
+require('./src/scenes/guildScene.js');
+require('./src/scenes/inviteScene.js');
+require('./src/scenes/settingsScene.js');
 require('./src/main.js');
 
 globalThis.SiXiang.Main.start();

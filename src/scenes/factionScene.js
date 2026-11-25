@@ -18,8 +18,8 @@
     ctx.save();
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fef08a';
-    ctx.font = 'bold 30px "PingFang SC", "STKaiti", serif';
-    ctx.fillText('四 象 三 国 志', W / 2, 50);
+    ctx.font = 'bold 32px "PingFang SC", "STKaiti", serif';
+    ctx.fillText('群英志', W / 2, 50);
     ctx.fillStyle = '#fde68a';
     ctx.font = '13px "PingFang SC", sans-serif';
     ctx.fillText('横版即时军团对垒 · 招降名将 · 神装锻造 · 捕捉四象神兽 · 演武场PK', W / 2, 74);
@@ -99,9 +99,10 @@
         ctx.font = 'bold 12px "PingFang SC", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(gCfg.name, px + 37, py + 92);
+        const tMeta = App.Config.getGeneralTroopMeta ? App.Config.getGeneralTroopMeta(gid) : { name: App.Config.UNIT_TYPES[gCfg.type].name };
         ctx.fillStyle = '#78350f';
         ctx.font = '10px "PingFang SC", sans-serif';
-        ctx.fillText(App.Config.UNIT_TYPES[gCfg.type].name, px + 37, py + 107);
+        ctx.fillText(tMeta.name, px + 37, py + 107);
         ctx.restore();
       });
 

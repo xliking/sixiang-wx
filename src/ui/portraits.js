@@ -1,10 +1,14 @@
 (function (root) {
   const App = (root.SiXiang = root.SiXiang || {});
 
-  // 离屏高清合成头像缓存（LRU 上限 72 张，内存占用极低且丝滑 60fps！）
+  // 离屏高清合成头像缓存（LRU 上限 48 张，复用单张面部遮罩画布，零临时画布分配）
   const compositeCache = new Map();
+  let sharedFaceScratch = null;
 
   function createOffscreen(sz) {
+    if (App.Platform && App.Platform.createOffscreen) {
+      return App.Platform.createOffscreen(sz, sz);
+    }
     if (typeof document !== 'undefined' && document.createElement) {
       const c = document.createElement('canvas');
       c.width = sz;
@@ -20,123 +24,31 @@
     return null;
   }
 
-  // ★ 为 800 位不重复关卡守将实时合成独一无二的手绘级彩色立绘（异色战甲+自然肤色保护+专属背光法阵+本命兵符徽记）
-  function getStageCommanderPortrait(g) {
-    const ps = g.portraitSpec;
-    if (!ps) return null;
-    const baseImg = App.Assets.get('general_' + ps.baseId);
-    if (!baseImg) return null;
-
-    if (compositeCache.has(g.id)) return compositeCache.get(g.id);
-
-    const SZ = 136;
-    const canvas = createOffscreen(SZ);
-    if (!canvas) return baseImg;
-    const cctx = canvas.getContext('2d');
-
-    // 1. 底层元素氛围背光
-    cctx.fillStyle = '#140c08';
-    cctx.fillRect(0, 0, SZ, SZ);
-
-    // 2. 绘制柔和护眼色调战甲与构图变化（严禁高饱和荧光绿/紫滤镜，保留自然古风质感！）
-    const gentleHue = ((ps.hueDeg % 48) - 24); // 限制在 ±24° 温润古典色偏内，绝不出现诡异荧光色
-    cctx.save();
-    cctx.translate(SZ / 2 + ps.panX * SZ, SZ / 2 + ps.panY * SZ);
-    cctx.scale((ps.flipX ? -1 : 1) * ps.zoom, ps.zoom);
-    if (typeof cctx.filter === 'string') {
-      cctx.filter = `hue-rotate(${gentleHue}deg) saturate(102%) contrast(103%)`;
-    }
-    cctx.drawImage(baseImg, -SZ / 2, -SZ / 2, SZ, SZ);
-    cctx.filter = 'none';
-    cctx.restore();
-
-    // 3. 面部与躯干自然肤色高清还原遮罩（确保所有武将脸部100%正常红润肤色！）
-    const faceCanvas = createOffscreen(SZ);
-    if (faceCanvas) {
-      const fctx = faceCanvas.getContext('2d');
-      fctx.save();
-      fctx.translate(SZ / 2 + ps.panX * SZ, SZ / 2 + ps.panY * SZ);
-      fctx.scale((ps.flipX ? -1 : 1) * ps.zoom, ps.zoom);
-      fctx.drawImage(baseImg, -SZ / 2, -SZ / 2, SZ, SZ);
-      fctx.restore();
-
-      fctx.globalCompositeOperation = 'destination-in';
-      const maskGrad = fctx.createRadialGradient(SZ * 0.5, SZ * 0.36, SZ * 0.08, SZ * 0.5, SZ * 0.36, SZ * 0.34);
-      maskGrad.addColorStop(0, 'rgba(255,255,255,0.98)');
-      maskGrad.addColorStop(0.7, 'rgba(255,255,255,0.65)');
-      maskGrad.addColorStop(1, 'rgba(255,255,255,0)');
-      fctx.fillStyle = maskGrad;
-      fctx.fillRect(0, 0, SZ, SZ);
-
-      cctx.drawImage(faceCanvas, 0, 0);
-    }
-
-    // 4. 柔和元素背光点缀（低透明度护眼）
-    const vfxImg = App.Assets.get(ps.vfxBg);
-    if (vfxImg) {
-      cctx.save();
-      cctx.globalCompositeOperation = 'lighter';
-      cctx.globalAlpha = 0.22;
-      cctx.translate(SZ / 2, SZ / 2);
-      cctx.rotate((ps.seed * 0.7) % (Math.PI * 2));
-      cctx.drawImage(vfxImg, -SZ * 0.62, -SZ * 0.62, SZ * 1.24, SZ * 1.24);
-      cctx.restore();
-    }
-
-    // 5. 四周暗角聚光 + 右下角本命神兵/战印小徽章 + 左上角阵营铭牌
-    const vig = cctx.createRadialGradient(SZ / 2, SZ * 0.44, SZ * 0.28, SZ / 2, SZ / 2, SZ * 0.74);
-    vig.addColorStop(0, 'rgba(0,0,0,0)');
-    vig.addColorStop(1, ps.darkTint || 'rgba(10,5,2,0.58)');
-    cctx.fillStyle = vig;
-    cctx.fillRect(0, 0, SZ, SZ);
-
-    const eqImg = App.Assets.get('eq_' + ps.emblemEq);
-    if (eqImg) {
-      const esz = 36;
-      const ex = SZ - esz - 5, ey = SZ - esz - 5;
-      cctx.save();
-      cctx.beginPath();
-      cctx.arc(ex + esz / 2, ey + esz / 2, esz / 2 + 2, 0, Math.PI * 2);
-      cctx.fillStyle = '#1c1008';
-      cctx.fill();
-      cctx.strokeStyle = ps.crestColor;
-      cctx.lineWidth = 2;
-      cctx.stroke();
-      cctx.beginPath();
-      cctx.arc(ex + esz / 2, ey + esz / 2, esz / 2, 0, Math.PI * 2);
-      cctx.clip();
-      cctx.drawImage(eqImg, ex, ey, esz, esz);
-      cctx.restore();
-    }
-
-    // 左上角专属印记点缀
+  function drawStageFactionBadge(ctx, g, x, y, size) {
+    if (!g || !g.isStageBoss || size < 44) return;
     const facCol = g.faction === 'wei' ? '#2563eb' : (g.faction === 'shu' ? '#16a34a' : (g.faction === 'wu' ? '#dc2626' : '#9333ea'));
     const facTxt = g.faction === 'wei' ? '魏' : (g.faction === 'shu' ? '蜀' : (g.faction === 'wu' ? '吴' : '群'));
-    cctx.save();
-    cctx.fillStyle = facCol;
-    cctx.strokeStyle = '#fde047';
-    cctx.lineWidth = 1.5;
-    cctx.beginPath();
-    cctx.arc(17, 17, 11, 0, Math.PI * 2);
-    cctx.fill();
-    cctx.stroke();
-    cctx.fillStyle = '#ffffff';
-    cctx.font = 'bold 11px "PingFang SC", serif';
-    cctx.textAlign = 'center';
-    cctx.textBaseline = 'middle';
-    cctx.fillText(facTxt, 17, 17.5);
-    cctx.restore();
-
-    if (compositeCache.size >= 72) {
-      const oldestKey = compositeCache.keys().next().value;
-      compositeCache.delete(oldestKey);
-    }
-    compositeCache.set(g.id, canvas);
-    return canvas;
+    const br = Math.max(7.5, size * 0.11);
+    ctx.save();
+    ctx.fillStyle = facCol;
+    ctx.strokeStyle = '#fde047';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(x + br + 3, y + br + 3, br, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${Math.round(br * 1.1)}px "PingFang SC", serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(facTxt, x + br + 3, y + br + 3.5);
+    ctx.restore();
   }
 
   /**
-   * 渲染名将头像（全部 800 位名将与关卡守将均优先直接加载各自的独立手绘立绘文件 assets/generals/<gid>.jpg！）
+   * 渲染名将与守将头像：
+   * 全部 54 位三国名将与 770 位关卡守将均严格加载各自的专属手绘立绘文件（generals/<gid>.jpg），
+   * 网络首帧尚未加载完成时使用该武将自身衣冠特征渲染，绝不借用或回退为其他名将头像！
    */
   function drawGeneralPortrait(ctx, gid, x, y, size, opts) {
     const o = opts || {};
@@ -147,41 +59,51 @@
     App.UI.roundRect(ctx, x, y, size, size, r);
     ctx.clip();
 
-    const realFileImg = App.Assets.get('general_' + gid);
-    const directImg = realFileImg || ((g && g.portraitSpec) ? getStageCommanderPortrait(g) : null);
-    if (directImg) {
-      ctx.drawImage(directImg, x, y, size, size);
-      // 关卡守将叠加左上角阵营小圆章，辨识度清晰
-      if (g && g.isStageBoss && size >= 46) {
-        const facCol = g.faction === 'wei' ? '#2563eb' : (g.faction === 'shu' ? '#16a34a' : (g.faction === 'wu' ? '#dc2626' : '#9333ea'));
-        const facTxt = g.faction === 'wei' ? '魏' : (g.faction === 'shu' ? '蜀' : (g.faction === 'wu' ? '吴' : '群'));
-        const br = Math.max(7.5, size * 0.11);
-        ctx.fillStyle = facCol;
-        ctx.strokeStyle = '#fde047';
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.arc(x + br + 3, y + br + 3, br, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `bold ${Math.round(br * 1.1)}px "PingFang SC", serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(facTxt, x + br + 3, y + br + 3.5);
-      }
+    const portraitKey = (g && g.imgKey) || ('general_' + gid);
+    const realFileImg = App.Assets.get(portraitKey);
+    if (realFileImg) {
+      ctx.drawImage(realFileImg, x, y, size, size);
+      drawStageFactionBadge(ctx, g, x, y, size);
     } else if (g) {
       drawChibiGeneral(ctx, g, x, y, size);
+      drawStageFactionBadge(ctx, g, x, y, size);
     } else {
       drawSoldierPortrait(ctx, o.unitType || 'spear', x, y, size);
     }
     ctx.restore();
 
-    // 稀有度/阵营边框
+    const effGen = (o.ascend === undefined && !o.raw && App.State && App.State.getEffectiveGeneral)
+      ? App.State.getEffectiveGeneral(gid)
+      : null;
+    const ascPath = o.ascend !== undefined ? o.ascend : (effGen && effGen.ascend) || '';
+    const ascBorder = ascPath === 'xian' ? '#38bdf8' : (ascPath === 'mo' ? '#e879f9' : null);
+
+    // 稀有度/阵营/仙魔边框
     ctx.save();
     App.UI.roundRect(ctx, x, y, size, size, r);
-    ctx.strokeStyle = o.border || (g && g.portraitSpec ? g.portraitSpec.crestColor : getRarityColor(g ? g.rarity : 'N'));
-    ctx.lineWidth = o.lineWidth || 2;
+    ctx.strokeStyle = o.border || ascBorder || (g && g.portraitSpec ? g.portraitSpec.crestColor : getRarityColor(g ? g.rarity : 'N'));
+    ctx.lineWidth = o.lineWidth || (ascBorder ? 2.2 : 2);
     ctx.stroke();
+
+    // 右上角仙/魔道果印记角标
+    if ((ascPath === 'xian' || ascPath === 'mo') && size >= 34) {
+      const isXian = ascPath === 'xian';
+      const br = Math.max(7.5, Math.min(11.5, size * 0.135));
+      const bx = x + size - br - 2.5;
+      const by = y + br + 2.5;
+      ctx.beginPath();
+      ctx.arc(bx, by, br, 0, Math.PI * 2);
+      ctx.fillStyle = isXian ? 'rgba(8, 51, 68, 0.94)' : 'rgba(74, 4, 78, 0.94)';
+      ctx.fill();
+      ctx.strokeStyle = isXian ? '#67e8f9' : '#f472b6';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      ctx.fillStyle = isXian ? '#ecfeff' : '#fdf4ff';
+      ctx.font = `bold ${Math.max(9, Math.round(br * 1.12))}px "PingFang SC", serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(isXian ? '仙' : '魔', bx, by + 0.5);
+    }
     ctx.restore();
   }
 

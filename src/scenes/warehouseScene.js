@@ -1,8 +1,9 @@
 (function (root) {
   const App = (root.SiXiang = root.SiXiang || {});
   let filterTab = 'items'; // 'items' | 'sets' | 'all' | 'weapon' | 'armor' | 'treasure' | 'mount' | 'beast_eq'
-  let showItemCodex = false; // false = 仅展示数量>0的库存道具；true = 浏览全214种道具百宝图鉴
+  let showItemCodex = false; // false = 仅展示数量>0的库存道具；true = 浏览全量百宝道具图鉴
   let codexCat = 'all';
+  let setFilter = 'all'; // 'all' | 'blue' | 'purple' | 'gold' | 'beast'
   let itemPage = 0;
   let setPage = 0;
   let selectedSetId = 'set_yinlong';
@@ -13,21 +14,11 @@
   function drawItemBoxIcon(ctx, itemId, x, y, size, isSel) {
     const cfg = App.Config.ITEMS[itemId];
     if (!cfg) return;
-    const q = App.Config.QUALITIES[cfg.quality] || App.Config.QUALITIES.blue;
-    ctx.save();
-    App.UI.roundRect(ctx, x, y, size, size, 10);
-    ctx.clip();
-    const img = App.Assets.get(cfg.imgKey);
-    if (img) ctx.drawImage(img, x, y, size, size);
-    else { ctx.fillStyle = q.bg; ctx.fillRect(x, y, size, size); }
-    ctx.restore();
-
-    ctx.save();
-    App.UI.roundRect(ctx, x, y, size, size, 10);
-    ctx.strokeStyle = isSel ? '#ffffff' : q.color;
-    ctx.lineWidth = isSel ? 3.0 : 2.0;
-    ctx.stroke();
-    ctx.restore();
+    App.Sprites.drawEquipIcon(ctx, itemId, x, y, size, {
+      radius: 10,
+      border: isSel ? '#ffffff' : undefined,
+      lineWidth: isSel ? 3.0 : 2.0,
+    });
   }
 
   function render(ctx) {
@@ -42,9 +33,10 @@
     App.UI.drawPanel(ctx, 14, 62, W - 28, 412, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
 
     // 顶部分类栏（新增【套装图鉴(24套)】，并支持库存道具/214种道具图鉴切换！）
+    const totalSetsCnt = (App.Config.EQUIP_SET_IDS || []).length || 68;
     const cats = [
       { id: 'items', label: '宝箱道具' },
-      { id: 'sets', label: '24套神装' },
+      { id: 'sets', label: `${totalSetsCnt}套神装` },
       { id: 'all', label: '全部装备' },
       { id: 'weapon', label: '神兵武器' },
       { id: 'armor', label: '战甲头盔' },
@@ -92,15 +84,18 @@
 
       let listIds = [];
       if (showItemCodex) {
-        // 顶部分类小胶囊（全部/秘匣/灵丹/竹简/符印/矿玉/锦缎/奇珍/御兽）
+        // 顶部分类小胶囊（自适应全部品类数量，零超框！）
         const icats = App.Config.ITEM_CATEGORIES || [{ id: 'all', name: '全部' }];
+        const stepW = Math.min(64, Math.floor(580 / Math.max(1, icats.length)));
+        const btnW = stepW - 4;
         icats.forEach((ic, idx) => {
           const isAct = codexCat === ic.id;
-          App.UI.drawButton(ctx, 34 + idx * 64, 120, 60, 22, ic.name.slice(0, 4), {
+          const shortLbl = ic.id === 'art_mat' ? '法宝灵材' : ic.name.slice(0, 4);
+          App.UI.drawButton(ctx, 34 + idx * stepW, 120, btnW, 22, shortLbl, {
             r: 5,
             grad: isAct ? ['#d97706', '#92400e'] : ['#4a2c16', '#321b0e'],
             border: isAct ? '#fef08a' : '#a16207',
-            fontSize: 9.5,
+            fontSize: stepW < 60 ? 9 : 9.5,
           }, () => { codexCat = ic.id; itemPage = 0; });
         });
         listIds = App.Config.ITEM_IDS.filter((id) => codexCat === 'all' || App.Config.ITEMS[id].cat === codexCat);
@@ -182,7 +177,7 @@
           ctx.fillText(`拥有：×${cnt}`, ix + 92, iy + 64);
           ctx.fillStyle = '#fde68a';
           ctx.font = '10px "PingFang SC", sans-serif';
-          const tagTxt = cfg.kind === 'chest' ? '可开启爆宝' : (cfg.kind === 'usable' ? '可直接使用' : (cfg.kind === 'special' ? '招降/特权' : '锻造/贡品'));
+          const tagTxt = cfg.cat === 'art_mat' ? '法宝炼材' : (cfg.kind === 'chest' ? '可开启爆宝' : (cfg.kind === 'usable' ? '可直接使用' : (cfg.kind === 'special' ? '招降/特权' : '锻造/贡品')));
           ctx.fillText(tagTxt, ix + 92, iy + 88);
           ctx.restore();
 
@@ -190,14 +185,7 @@
         });
       }
 
-      if (maxItemPage > 0) {
-        App.UI.drawButton(ctx, 206, 426, 66, 26, '◀ 上页', { r: 6, bg: '#4a2c16', fontSize: 10.5, disabled: itemPage <= 0 }, () => { itemPage--; });
-        ctx.save();
-        ctx.fillStyle = '#fef3c7'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(`${itemPage + 1} / ${maxItemPage + 1}`, 324, 443);
-        ctx.restore();
-        App.UI.drawButton(ctx, 376, 426, 66, 26, '下页 ▶', { r: 6, bg: '#4a2c16', fontSize: 10.5, disabled: itemPage >= maxItemPage }, () => { itemPage++; });
-      }
+      App.UI.drawPagination(ctx, 42, 427, 564, 26, itemPage, maxItemPage + 1, (p) => { itemPage = p; });
 
       // 右侧：道具详情与使用/出售面板
       App.UI.drawPanel(ctx, 634, 114, 300, 346, { r: 10, bg: '#ead4a2', border: '#7c4a21', lineWidth: 2 });
@@ -227,15 +215,52 @@
         ctx.restore();
 
         if (cnt > 0) {
-          if (cfg.kind === 'chest' || cfg.kind === 'usable') {
-            const btnText = cfg.kind === 'chest' ? `开启宝箱 (剩${cnt}个)` : `立即使用 (剩${cnt}个)`;
-            App.UI.drawButton(ctx, 650, 324, 268, 44, btnText, {
-              r: 10, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 14,
-            }, () => { App.State.useOrOpenItem(selectedItemId); });
+          if (cfg.cat === 'art_mat') {
+            App.UI.drawButton(ctx, 650, 322, 268, 44, '前往锻器坊 · 炼化镇军法宝', {
+              r: 10, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 13.5,
+            }, () => { App.Main.goScene('forge', { tab: 'artifact' }); });
+          } else if (cfg.kind === 'chest' || cfg.kind === 'usable') {
+            const batchN = Math.min(10, cnt);
+            if (cnt >= 2) {
+              const b1 = cfg.kind === 'chest' ? '开启 ×1' : '使用 ×1';
+              const bN = cfg.kind === 'chest' ? `⚡ 连开 ×${batchN}` : `⚡ 连用 ×${batchN}`;
+              App.UI.drawButton(ctx, 650, 322, 128, 44, b1, {
+                r: 10, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 13,
+              }, () => { App.State.useOrOpenItem(selectedItemId, 1); });
+              App.UI.drawButton(ctx, 786, 322, 132, 44, bN, {
+                r: 10, grad: ['#ea580c', '#9a3412'], border: '#fef08a', fontSize: 13,
+              }, () => { App.State.useOrOpenItem(selectedItemId, batchN); });
+            } else {
+              const btnText = cfg.kind === 'chest' ? `开启宝箱 (剩${cnt}个)` : `立即使用 (剩${cnt}个)`;
+              App.UI.drawButton(ctx, 650, 322, 268, 44, btnText, {
+                r: 10, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 14,
+              }, () => { App.State.useOrOpenItem(selectedItemId, 1); });
+            }
           }
-          App.UI.drawButton(ctx, 650, 380, 268, 42, `出售 1 件 (+${cfg.sellPrice} 铜钱)`, {
-            r: 10, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 13,
-          }, () => { App.State.sellItem(selectedItemId); });
+          if (cnt >= 2) {
+            const sellN = Math.min(50, cnt);
+            App.UI.drawButton(ctx, 650, 378, 128, 42, `出售×1 (+${cfg.sellPrice})`, {
+              r: 10, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 11.5,
+            }, () => { App.State.sellItem(selectedItemId, 1); });
+            App.UI.drawButton(ctx, 786, 378, 132, 42, `全售×${sellN} (+${cfg.sellPrice * sellN})`, {
+              r: 10, grad: ['#b91c1c', '#7f1d1d'], border: '#fca5a5', fontSize: 11,
+            }, () => { App.State.sellItem(selectedItemId, sellN); });
+          } else {
+            App.UI.drawButton(ctx, 650, 378, 268, 42, `出售 1 件 (+${cfg.sellPrice} 铜钱)`, {
+              r: 10, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 13,
+            }, () => { App.State.sellItem(selectedItemId, 1); });
+          }
+        } else if (cfg.cat === 'art_mat' && Array.isArray(cfg.dropStages) && cfg.dropStages.length) {
+          App.UI.drawButton(ctx, 650, 344, 268, 44, `前往第${cfg.dropChapter || 1}章(第${cfg.dropStages[0]}~${cfg.dropStages[1]}关)获取`, {
+            r: 10, grad: ['#b91c1c', '#7f1d1d'], border: '#fef08a', fontSize: 12.5,
+          }, () => {
+            const st1 = cfg.dropStages[0];
+            if (App.State.isStageUnlocked && !App.State.isStageUnlocked(st1)) {
+              App.UI.showToast(`请先推进主线至第 ${st1} 关解锁该章节掉落！`, '#fbbf24');
+              return;
+            }
+            App.Main.goScene('map', { selectOrder: st1 });
+          });
         } else {
           App.UI.drawButton(ctx, 650, 344, 268, 44, '前往铜钱商城 / 征战获取', {
             r: 10, grad: ['#16a34a', '#15803d'], border: '#bbf7d0', fontSize: 13,
@@ -260,15 +285,36 @@
       return;
     }
 
-    // ================= 分支 B：【24套传世神装】套装图鉴与收集进度（20套武将六件套 + 4套神兽四件套！） =================
+    // ================= 分支 B：传世神装套装图鉴与收集进度（支持品质与神兽套装快速筛选！） =================
     if (filterTab === 'sets') {
-      const setIds = App.Config.EQUIP_SET_IDS || [];
-      if (!setIds.includes(selectedSetId)) selectedSetId = setIds[0];
+      const allSetIds = App.Config.EQUIP_SET_IDS || [];
+      const setIds = allSetIds.filter((sid) => {
+        const s = App.Config.EQUIP_SETS[sid];
+        if (!s) return false;
+        if (setFilter === 'beast') return !!s.isBeastSet;
+        if (setFilter === 'blue' || setFilter === 'purple' || setFilter === 'gold') return s.quality === setFilter && !s.isBeastSet;
+        return true;
+      });
+      if (!setIds.includes(selectedSetId)) selectedSetId = setIds[0] || allSetIds[0];
       const ownedTplSet = new Set((st.inventory || []).map((e) => e.tplId));
 
-      // 左侧：24 套套装分页名录
+      // 左侧：套装筛选胶囊 + 分页名录
       App.UI.drawPanel(ctx, 26, 114, 248, 346, { r: 10, bg: '#573b22', border: '#4a2c16', lineWidth: 1.5 });
-      const sPerPage = 7;
+      const sTabs = [
+        { id: 'all', label: '全部' },
+        { id: 'blue', label: '蓝套' },
+        { id: 'purple', label: '紫套' },
+        { id: 'gold', label: '金套' },
+        { id: 'beast', label: '兽套' },
+      ];
+      sTabs.forEach((stItem, si) => {
+        const on = setFilter === stItem.id;
+        App.UI.drawButton(ctx, 33 + si * 47, 120, 44, 22, stItem.label, {
+          r: 6, grad: on ? ['#d97706', '#92400e'] : ['#3b2112', '#261409'], border: on ? '#fef08a' : '#78350f', fontSize: 9.5,
+        }, () => { setFilter = stItem.id; setPage = 0; });
+      });
+
+      const sPerPage = 6;
       const maxSetPage = Math.max(0, Math.ceil(setIds.length / sPerPage) - 1);
       setPage = Math.min(setPage, maxSetPage);
       const sSlice = setIds.slice(setPage * sPerPage, (setPage + 1) * sPerPage);
@@ -278,9 +324,9 @@
         const q = App.Config.QUALITIES[sCfg.quality] || App.Config.QUALITIES.blue;
         const ownedCnt = sCfg.pieceIds.filter((pid) => ownedTplSet.has(pid)).length;
         const isSel = sid === selectedSetId;
-        const sy = 122 + idx * 42;
+        const sy = 148 + idx * 45;
 
-        App.UI.drawButton(ctx, 34, sy, 232, 36, '', {
+        App.UI.drawButton(ctx, 34, sy, 232, 39, '', {
           r: 8,
           grad: isSel ? ['#b45309', '#78350f'] : ['#3b2112', '#261409'],
           border: isSel ? '#fef08a' : q.color,
@@ -290,20 +336,15 @@
         ctx.textAlign = 'left';
         ctx.fillStyle = isSel ? '#fef08a' : q.color;
         ctx.font = 'bold 12px "PingFang SC", sans-serif';
-        ctx.fillText(`${sCfg.isBeastSet ? '[兽] ' : ''}${sCfg.name}`, 44, sy + 22);
+        ctx.fillText(`${sCfg.isBeastSet ? '[兽] ' : ''}${sCfg.name}`, 44, sy + 24);
         ctx.textAlign = 'right';
         ctx.fillStyle = ownedCnt > 0 ? '#4ade80' : '#a8a29e';
         ctx.font = 'bold 11px sans-serif';
-        ctx.fillText(`${ownedCnt}/${sCfg.pieceIds.length}`, 256, sy + 22);
+        ctx.fillText(`${ownedCnt}/${sCfg.pieceIds.length}`, 256, sy + 24);
         ctx.restore();
       });
 
-      App.UI.drawButton(ctx, 36, 424, 62, 26, '◀ 上页', { r: 6, bg: '#3b2112', fontSize: 10, disabled: setPage <= 0 }, () => { setPage--; });
-      ctx.save();
-      ctx.fillStyle = '#fef3c7'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(`${setPage + 1}/${maxSetPage + 1} (共${setIds.length}套)`, 150, 441);
-      ctx.restore();
-      App.UI.drawButton(ctx, 198, 424, 62, 26, '下页 ▶', { r: 6, bg: '#3b2112', fontSize: 10, disabled: setPage >= maxSetPage }, () => { setPage++; });
+      App.UI.drawPagination(ctx, 32, 424, 236, 26, setPage, maxSetPage + 1, (p) => { setPage = p; }, { bg: '#3b2112' });
 
       // 右侧：选中套装的 6 件（或神兽 4 件）高清图标展示 + 套装共鸣属性词条！
       const curSet = App.Config.EQUIP_SETS[selectedSetId];
@@ -311,11 +352,21 @@
       if (curSet) {
         const q = App.Config.QUALITIES[curSet.quality];
         const ownedCnt = curSet.pieceIds.filter((pid) => ownedTplSet.has(pid)).length;
+        const auraKey = curSet.auraVfx || (curSet.quality === 'blue' ? 'none' : 'golden_emperor');
+        const auraMeta = (App.Config.SET_AURA_META && App.Config.SET_AURA_META[auraKey]) || { name: '基础军备', color: q.color };
+        if (auraKey !== 'none' && App.Sprites.drawUiSetAura) {
+          App.Sprites.drawUiSetAura(ctx, 892, 344, 24, {
+            auraVfx: auraKey,
+            auraColor: curSet.auraColor || auraMeta.color,
+            auraSubColor: auraMeta.subColor || '#fef08a',
+            vfxTier: curSet.quality === 'gold' ? 3 : 2,
+          });
+        }
         ctx.save();
         ctx.textAlign = 'left';
         ctx.fillStyle = q.color;
-        ctx.font = 'bold 18px "PingFang SC", serif';
-        ctx.fillText(`【${curSet.name}】 (${q.name}${curSet.isBeastSet ? ' · 四象神兽专属套装' : ' · 名将六件套装'})`, 302, 144);
+        ctx.font = 'bold 17px "PingFang SC", serif';
+        ctx.fillText(`【${curSet.name}】 (${q.name}${curSet.isBeastSet ? ' · 神兽套装' : ' · 名将六件套'}${auraKey !== 'none' ? ` · 异象:${auraMeta.name}` : ''})`, 302, 144, 456);
         ctx.fillStyle = '#fde68a';
         ctx.font = 'bold 12px "PingFang SC", sans-serif';
         ctx.fillText(`当前已收集：${ownedCnt} / ${curSet.pieceIds.length} 件`, 768, 144);
@@ -324,6 +375,7 @@
         curSet.pieceIds.forEach((pid, idx) => {
           const tpl = App.Config.EQUIP_TEMPLATES[pid];
           const hasIt = ownedTplSet.has(pid);
+          const wVfx = App.Config.resolveWeaponVfx ? App.Config.resolveWeaponVfx(tpl) : null;
           const px = 302 + idx * 104;
           const py = 162;
 
@@ -338,9 +390,9 @@
           ctx.fillStyle = '#fef08a';
           ctx.font = 'bold 10.5px "PingFang SC", sans-serif';
           ctx.fillText(tpl.name.slice(0, 6), px + 47, py + 97);
-          ctx.fillStyle = hasIt ? '#4ade80' : '#a8a29e';
+          ctx.fillStyle = hasIt ? '#4ade80' : (wVfx ? '#f5d0fe' : '#a8a29e');
           ctx.font = '10px "PingFang SC", sans-serif';
-          ctx.fillText(hasIt ? '✓ 已拥有' : `攻+${tpl.atk}`, px + 47, py + 116);
+          ctx.fillText(hasIt ? '✓ 已拥有' : (wVfx ? `⚔${wVfx.atkName}` : `攻+${tpl.atk}`), px + 47, py + 116);
           ctx.restore();
         });
 
@@ -397,20 +449,22 @@
       items.forEach((eq, idx) => {
         const col = idx % 6;
         const row = Math.floor(idx / 6);
-        const ix = 38 + col * 96;
-        const iy = 124 + row * 102;
+        const ix = 40 + col * 95;
+        const iy = 122 + row * 99;
         const tpl = App.Config.EQUIP_TEMPLATES[eq.tplId];
         const q = App.Config.QUALITIES[tpl.quality];
         const isSel = eq.uid === selectedUid;
+        const eqSz = 78;
 
-        App.Sprites.drawEquipIcon(ctx, tpl.id, ix, iy, 82, {
-          radius: 10, border: isSel ? '#ffffff' : q.color, lineWidth: isSel ? 3.2 : 2,
+        App.Sprites.drawEquipIcon(ctx, tpl.id, ix, iy, eqSz, {
+          radius: 9, border: isSel ? '#ffffff' : q.color, lineWidth: isSel ? 3.2 : 2,
+          enhance: eq.enhance, star: eq.star, advance: eq.advance,
         });
 
         ctx.save();
         if (eq.equippedBy || eq.equippedByBeast) {
           ctx.fillStyle = eq.equippedByBeast ? '#0284c7' : '#15803d';
-          App.UI.roundRect(ctx, ix + 4, iy + 4, 52, 15, 4);
+          App.UI.roundRect(ctx, ix + 4, iy + 4, 50, 14, 4);
           ctx.fill();
           ctx.fillStyle = '#ffffff';
           ctx.font = 'bold 9px "PingFang SC", sans-serif';
@@ -418,25 +472,22 @@
           const wearer = eq.equippedByBeast
             ? (App.Config.BEASTS[eq.equippedByBeast] ? App.Config.BEASTS[eq.equippedByBeast].shortName : '神兽')
             : (App.Config.GENERALS[eq.equippedBy] ? App.Config.GENERALS[eq.equippedBy].name : '穿戴');
-          ctx.fillText(wearer, ix + 30, iy + 15);
+          ctx.fillText(wearer, ix + 29, iy + 14);
         }
 
         ctx.fillStyle = 'rgba(0,0,0,0.72)';
-        ctx.fillRect(ix + 2, iy + 62, 78, 18);
+        ctx.fillRect(ix + 2, iy + eqSz - 19, eqSz - 4, 17);
         ctx.fillStyle = '#fde047';
         ctx.font = 'bold 10px "PingFang SC", sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(`${tpl.name.slice(0, 4)} +${eq.enhance}`, ix + 41, iy + 75);
+        ctx.fillText(`${tpl.name.slice(0, 4)} +${eq.enhance}`, ix + eqSz / 2, iy + eqSz - 7);
         ctx.restore();
 
-        App.UI.addHit(ix, iy, 82, 86, () => { selectedUid = eq.uid; });
+        App.UI.addHit(ix, iy, eqSz, eqSz + 4, () => { selectedUid = eq.uid; });
       });
     }
 
-    if (maxPage > 0) {
-      App.UI.drawButton(ctx, 230, 430, 64, 24, '◀ 上页', { r: 6, bg: '#4a2c16', fontSize: 10, disabled: page <= 0 }, () => { page--; });
-      App.UI.drawButton(ctx, 354, 430, 64, 24, '下页 ▶', { r: 6, bg: '#4a2c16', fontSize: 10, disabled: page >= maxPage }, () => { page++; });
-    }
+    App.UI.drawPagination(ctx, 42, 427, 564, 26, page, maxPage + 1, (p) => { page = p; });
 
     App.UI.drawPanel(ctx, 634, 114, 300, 346, { r: 10, bg: '#ead4a2', border: '#7c4a21', lineWidth: 2 });
     const selEq = st.inventory.find((e) => e.uid === selectedUid);
@@ -447,20 +498,29 @@
       const sellPrice = App.Config.getEquipSellPrice(selEq);
       const enhCost = App.State.getCost('enhance', selEq.enhance);
 
-      App.Sprites.drawEquipIcon(ctx, tpl.id, 650, 126, 86, { radius: 12, border: q.color, lineWidth: 2.5 });
+      const wVfxSel = App.Config.resolveWeaponVfx ? App.Config.resolveWeaponVfx(selEq) : null;
+      App.Sprites.drawEquipIcon(ctx, tpl.id, 650, 126, 86, {
+        radius: 12, border: q.color, lineWidth: 2.5,
+        enhance: selEq.enhance, star: selEq.star, advance: selEq.advance,
+      });
       ctx.save();
       ctx.textAlign = 'left';
       ctx.fillStyle = '#451a03';
       ctx.font = 'bold 16px "PingFang SC", sans-serif';
-      ctx.fillText(`${tpl.name} +${selEq.enhance}`, 746, 150);
+      ctx.fillText(`${tpl.name} +${selEq.enhance}`, 746, 150, 178);
       ctx.fillStyle = q.bg;
       ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
-      ctx.fillText(`品质：${q.name}${tpl.setName ? ` · ${tpl.setName}` : ''}`, 746, 173);
+      ctx.fillText(`品质：${q.name}${tpl.setName ? ` · ${tpl.setName}` : ''}`, 746, 173, 178);
       const wearerDesc = selEq.equippedByBeast
         ? `穿戴神兽：${App.Config.BEASTS[selEq.equippedByBeast].name}`
         : (selEq.equippedBy ? `穿戴名将：${App.Config.GENERALS[selEq.equippedBy].name}` : (tpl.isBeastEquip ? '类型：神兽专属装备（闲置）' : '状态：仓库闲置'));
       ctx.fillStyle = (selEq.equippedBy || selEq.equippedByBeast) ? '#15803d' : '#78350f';
-      ctx.fillText(wearerDesc, 746, 195);
+      ctx.fillText(wearerDesc, 746, 194, 178);
+      if (wVfxSel) {
+        ctx.fillStyle = '#7e22ce';
+        ctx.font = 'bold 11px "PingFang SC", sans-serif';
+        ctx.fillText(`⚔ 局内攻效：【${wVfxSel.atkName}】`, 746, 213, 178);
+      }
 
       ctx.fillStyle = '#451a03';
       ctx.font = 'bold 12.5px "PingFang SC", sans-serif';
@@ -471,9 +531,25 @@
         const sCfg = App.Config.EQUIP_SETS[tpl.setId];
         ctx.fillStyle = '#9a3412';
         ctx.font = 'bold 11px "PingFang SC", sans-serif';
-        ctx.fillText(`套装【${sCfg.name}】：${sCfg.bonuses[0].desc}`, 650, 279);
+        ctx.fillText(`套装【${sCfg.name}】：${sCfg.bonuses[0].desc}`, 650, 279, 268);
         if (sCfg.bonuses[1]) {
-          ctx.fillText(`${sCfg.bonuses[1].desc}`, 650, 297);
+          ctx.fillText(`${sCfg.bonuses[sCfg.bonuses.length - 1].desc}`, 650, 297, 268);
+        }
+      } else {
+        const tacParts = [];
+        if (bonus.critDmg) tacParts.push(`暴伤+${Math.round(bonus.critDmg * 100)}%`);
+        if (bonus.lifesteal) tacParts.push(`吸血+${Math.round(bonus.lifesteal * 100)}%`);
+        if (bonus.dmgReduce) tacParts.push(`免伤+${Math.round(bonus.dmgReduce * 100)}%`);
+        if (bonus.skillDmgPct) tacParts.push(`技伤+${Math.round(bonus.skillDmgPct * 100)}%`);
+        if (bonus.spdPct) tacParts.push(`攻速+${Math.round(bonus.spdPct * 100)}%`);
+        if (bonus.initRage) tacParts.push(`怒气+${bonus.initRage}`);
+        ctx.fillStyle = '#7e22ce';
+        ctx.font = 'bold 11px "PingFang SC", sans-serif';
+        ctx.fillText(`★ 无双散件名器：${tacParts.join(' ') || '超高白值混搭圣物'}`, 650, 279, 268);
+        if (tpl.desc) {
+          ctx.fillStyle = '#573318';
+          ctx.font = '10.5px "PingFang SC", sans-serif';
+          ctx.fillText(tpl.desc.slice(0, 22), 650, 297, 268);
         }
       }
       ctx.restore();

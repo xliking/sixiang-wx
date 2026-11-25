@@ -4,27 +4,36 @@
   // 铜雀天梯：国风鎏金宝塔攀登界面（配备手绘铜雀高台云海原画 + 图标化供奉与奖励展示）
   function floorInfo(floor) {
     const t = App.Config.TOWER;
-    const lv = (t.baseEnemyLv || 3) + Math.floor(floor * 0.9);
+    const dCfg = App.Config.DIFFICULTY || {};
+    const lvStep = t.enemyLvPerFloor || dCfg.towerLvPerFloor || 1.18;
+    const lv = (t.baseEnemyLv || 5) + Math.floor(floor * lvStep);
     const hasGen = floor % (t.generalEvery || 5) === 0;
     const lineups = t.lineups || [];
     const lineup = hasGen && lineups.length ? lineups[(Math.floor(floor / (t.generalEvery || 5)) - 1) % lineups.length] : null;
-    const gens = lineup ? lineup.generals.filter((g) => App.Config.GENERALS[g]) : [];
+    let gens = lineup ? lineup.generals.filter((g) => App.Config.GENERALS[g]) : [];
+    if (!gens.length && floor >= 2 && App.Config.ALL_GENERAL_IDS && App.Config.ALL_GENERAL_IDS.length) {
+      const pool = App.Config.ALL_GENERAL_IDS;
+      const pick1 = pool[(floor * 7) % pool.length];
+      gens = floor >= 15 && floor % 2 === 0 ? [pick1, pool[(floor * 13 + 3) % pool.length]] : [pick1];
+    }
     const disasters = App.Config.DISASTERS;
     const disaster = floor % (t.disasterEvery || 10) === 0 && disasters.length ? disasters[(floor / (t.disasterEvery || 10) - 1) % disasters.length] : null;
+    const basePower = Math.round(5200 + floor * 1320 + Math.pow(floor, 1.68) * 155 + (hasGen ? (6500 + lv * 1100) : 0));
+    const power = App.Config.scaleRecommendedPower('tower', basePower, { order: Math.min(120, 5 + floor), difficultyMult: 1 });
     return {
       floor, lv, lineup, disaster, goldEquip: floor % (t.goldEquipEvery || 10) === 0,
-      power: Math.round(1500 + floor * 520 + Math.pow(floor, 1.4) * 40 + gens.length * lv * 180),
+      power,
       level: {
         id: 'tower_' + floor,
         name: `铜雀天梯 · 第 ${floor} 层${lineup ? ' · ' + lineup.name : ''}`,
-        order: Math.min(60, 5 + floor),
+        order: Math.min(120, 5 + floor),
         chapter: 4 + Math.floor(floor / 5),
         biome: 'canyon',
         recommendedLv: lv,
         towers: floor % 3 === 0 ? 2 : 1,
         forceDisasterId: disaster ? disaster.id : null,
         noDisaster: !disaster,
-        enemyGenerals: gens.map((g, i) => ({ id: g, lv, isBoss: i === 0 })),
+        enemyGenerals: gens.map((g, i) => ({ id: g, lv, isBoss: hasGen && i === 0 })),
       },
     };
   }
@@ -46,7 +55,8 @@
     App.UI.drawPanel(ctx, 14, 62, W - 28, 412, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
     App.UI.drawPanel(ctx, 26, 72, W - 52, 44, { r: 10, bg: '#451a03', border: '#d4a34b', lineWidth: 1.8 });
 
-    const cleared = st.towerFloor || 0, next = cleared + 1, top = cleared >= (t.maxFloor || 100);
+    const maxFloor = t.maxFloor || 200;
+    const cleared = st.towerFloor || 0, next = cleared + 1, top = cleared >= maxFloor;
     const towerIcon = App.Assets.get('icon_tower');
     if (towerIcon) {
       ctx.drawImage(towerIcon, 34, 75, 38, 38);
@@ -57,7 +67,7 @@
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fef08a';
     ctx.font = 'bold 16.5px "PingFang SC", serif';
-    ctx.fillText(`铜雀天梯 · 已登临 ${cleared} / ${t.maxFloor || 100} 层`, 78, 94);
+    ctx.fillText(`铜雀天梯 · 已登临 ${cleared} / ${maxFloor} 层`, 78, 94);
     ctx.restore();
 
     const myPower = App.State.getTeamPower();
@@ -90,7 +100,7 @@
     // ================= 左侧：6 层递进古铜飞檐塔阶列表 =================
     for (let i = 0; i < 6; i++) {
       const f = floorInfo(next + 5 - i), y = 124 + i * 56, cur = f.floor === next;
-      if (f.floor > (t.maxFloor || 100)) continue;
+      if (f.floor > maxFloor) continue;
       const isBossFloor = !!f.lineup;
 
       App.UI.drawPanel(ctx, 26, y, 376, 50, {
@@ -149,7 +159,7 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = '#fde047';
       ctx.font = 'bold 22px "PingFang SC", serif';
-      ctx.fillText('★ 主公已威震九州 · 登顶铜雀百层天梯！ ★', rx + rw / 2, ry + rh / 2);
+      ctx.fillText(`★ 主公已威震九州 · 登顶铜雀 ${maxFloor} 层天梯！ ★`, rx + rw / 2, ry + rh / 2);
       ctx.restore();
     } else {
       const f = floorInfo(next), locked = (st.lordLevel || 1) < (t.unlockLordLv || 1);

@@ -12,7 +12,8 @@
     App.Main.startBattle('demon', d.id, {
       level: {
         id: d.id, name: d.name, order: 40, chapter: 20, biome: 'canyon',
-        recommendedLv: d.enemyLv, towers: 1, demon: d,
+        battleKey: d.battleKey || undefined,
+        recommendedLv: d.enemyLv, difficultyMult: d.difficultyMult || 1, towers: 1, demon: d,
         enemyGenerals: [{ id: d.generalId, lv: d.enemyLv, isBoss: true }],
       },
     });
@@ -58,21 +59,7 @@
     page = Math.min(page, maxPage);
 
     if (maxPage > 0) {
-      App.UI.drawButton(ctx, 610, 78, 76, 32, '◀ 上一批', {
-        r: 8, grad: ['#78350f', '#451a03'], border: '#fde047', fontSize: 11, disabled: page <= 0,
-      }, () => { page -= 1; });
-
-      ctx.save();
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#fde68a';
-      ctx.font = 'bold 12px "PingFang SC", sans-serif';
-      ctx.fillText(`${page + 1} / ${maxPage + 1}`, 716, 94);
-      ctx.restore();
-
-      App.UI.drawButton(ctx, 746, 78, 76, 32, '下一批 ▶', {
-        r: 8, grad: ['#b45309', '#78350f'], border: '#fde047', fontSize: 11, disabled: page >= maxPage,
-      }, () => { page += 1; });
+      App.UI.drawPagination(ctx, 602, 80, 232, 28, page, maxPage + 1, (p) => { page = p; }, { bg: '#5c2c16', border: '#fde047' });
     }
 
     App.UI.drawButton(ctx, W - 104, 78, 68, 32, '返回', {
@@ -87,7 +74,8 @@
       const tokens = (st.demonTokens || {})[d.id] || 0;
       const locked = (st.lordLevel || 1) < (d.unlockLordLv || 1);
       const left = Math.max(0, (d.dailyLimit || 3) - (today[d.id] || 0));
-      const canBeat = myPower >= d.recommendedPower;
+      const recPower = App.Config.scaleRecommendedPower('demon', d.recommendedPower || d.enemyLv * 1650, d);
+      const canBeat = myPower >= recPower;
 
       // 外层赤金雕花讨伐卡 + 顶部暗焰辉光衬底
       App.UI.drawPanel(ctx, x, y, w, h, { r: 12, bg: '#381911', border: '#f59e0b', lineWidth: 1.8 });
@@ -111,7 +99,7 @@
 
       ctx.fillStyle = canBeat ? '#86efac' : '#fca5a5';
       ctx.font = 'bold 12px "PingFang SC", sans-serif';
-      ctx.fillText(`推荐战力 ${d.recommendedPower}${canBeat ? '（兵力充沛）' : '（强敌慎入）'}`, x + w / 2, y + 185);
+      ctx.fillText(`推荐战力 ${recPower}${canBeat ? '（兵力充沛）' : '（强敌慎入）'}`, x + w / 2, y + 185);
 
       // 战利品黑金条
       ctx.fillStyle = 'rgba(20, 8, 4, 0.72)';

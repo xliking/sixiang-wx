@@ -1,5 +1,5 @@
 {
-  "description": "《四象三国志》微信小游戏工程",
+  "description": "《群英志》微信小游戏工程",
   "setting": {
     "urlCheck": false,
     "es6": true,
@@ -33,7 +33,12 @@
   "condition": {},
   "simulatorPluginLibVersion": {},
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      { "type": "folder", "value": "server" },
+      { "type": "folder", "value": ".idea" },
+      { "type": "file", "value": "index.html" },
+      { "type": "file", "value": "README.md" }
+    ],
     "include": []
   },
   "isGameTourist": false,

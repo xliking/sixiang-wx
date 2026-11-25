@@ -2,6 +2,52 @@
   const App = (root.SiXiang = root.SiXiang || {});
 
   const MUTE_STORAGE_KEY = 'sixiang_audio_muted_v1';
+  const SETTINGS_STORAGE_KEY = 'sixiang_user_settings_v1';
+
+  const DEFAULT_SETTINGS = {
+    muted: false,
+    bgmEnabled: true,
+    bgmVolume: 0.80,
+    sfxEnabled: true,
+    sfxVolume: 1.00,
+    autoCamera: true,
+    screenShake: true,
+    damageFloat: true,
+    highQualityVfx: true,
+    vibrate: true,
+  };
+
+  const userSettings = Object.assign({}, DEFAULT_SETTINGS);
+
+  function clamp01(v, fallback) {
+    const n = Number(v);
+    if (isNaN(n)) return fallback;
+    return Math.max(0, Math.min(1, Math.round(n * 100) / 100));
+  }
+
+  function loadSettingsFromStorage() {
+    if (!App.Platform || !App.Platform.loadStorage) return;
+    const legacy = App.Platform.loadStorage(MUTE_STORAGE_KEY);
+    if (legacy && typeof legacy.muted === 'boolean') {
+      userSettings.muted = legacy.muted;
+    }
+    const saved = App.Platform.loadStorage(SETTINGS_STORAGE_KEY);
+    if (saved && typeof saved === 'object') {
+      Object.keys(DEFAULT_SETTINGS).forEach((k) => {
+        if (saved[k] !== undefined) {
+          userSettings[k] = typeof DEFAULT_SETTINGS[k] === 'boolean'
+            ? !!saved[k]
+            : clamp01(saved[k], DEFAULT_SETTINGS[k]);
+        }
+      });
+    }
+  }
+
+  function saveSettingsToStorage() {
+    if (!App.Platform || !App.Platform.saveStorage) return;
+    App.Platform.saveStorage(SETTINGS_STORAGE_KEY, Object.assign({}, userSettings));
+    App.Platform.saveStorage(MUTE_STORAGE_KEY, { muted: !!userSettings.muted });
+  }
 
   let actx = null;
   let masterGain = null;
@@ -260,17 +306,103 @@
     },
   };
 
-  function init() {
-    if (App.Platform && App.Platform.loadStorage) {
-      const saved = App.Platform.loadStorage(MUTE_STORAGE_KEY);
-      if (saved && typeof saved.muted === 'boolean') muted = saved.muted;
+  let unlockBound = false;
+  let unlockListeners = null;
+  let appInterrupted = false;
+
+  function autoDisconnect(src, nodes) {
+    if (!src) return;
+    src.onended = () => {
+      try { src.disconnect(); } catch (e) {}
+      if (nodes) {
+        for (let i = 0; i < nodes.length; i++) {
+          if (nodes[i]) { try { nodes[i].disconnect(); } catch (e) {} }
+        }
+      }
+    };
+  }
+
+  function hasUserActivation() {
+    if (unlocked) return true;
+    if (typeof navigator !== 'undefined' && navigator.userActivation) {
+      return !!(navigator.userActivation.isActive || navigator.userActivation.hasBeenActive);
     }
-    // 监听任意首次触摸/点击/按键自动唤醒音频引擎，确保进入首页即可流畅长播背景音乐
-    if (typeof document !== 'undefined' && document.addEventListener) {
-      const autoUnlock = () => unlock();
-      ['pointerdown', 'touchstart', 'mousedown', 'keydown'].forEach((ev) => {
-        document.addEventListener(ev, autoUnlock, { passive: true });
-      });
+    return true;
+  }
+
+  function removeUnlockListeners() {
+    if (!unlockListeners || typeof document === 'undefined' || !document.removeEventListener) return;
+    unlockListeners.events.forEach((ev) => {
+      document.removeEventListener(ev, unlockListeners.fn, true);
+    });
+    unlockListeners = null;
+  }
+
+  function resumeAfterInterruption() {
+    appInterrupted = false;
+    if (muted || !actx) return;
+    if (actx.state !== 'running' && actx.resume) {
+      try {
+        const p = actx.resume();
+        if (p && typeof p.then === 'function') {
+          p.then(() => {
+            unlocked = true;
+            nextNoteTime = Math.max(nextNoteTime, actx.currentTime + 0.06);
+          }).catch(() => {});
+        }
+      } catch (e) {}
+    } else if (actx.state === 'running') {
+      nextNoteTime = Math.max(nextNoteTime, actx.currentTime + 0.06);
+    }
+  }
+
+  function init() {
+    loadSettingsFromStorage();
+    muted = !!userSettings.muted;
+    if (!unlockBound) {
+      unlockBound = true;
+      if (typeof document !== 'undefined' && document.addEventListener) {
+        const events = ['pointerup', 'touchend', 'click', 'keydown'];
+        const autoUnlock = () => {
+          unlock();
+          if (unlocked && actx && actx.state === 'running') {
+            removeUnlockListeners();
+          }
+        };
+        unlockListeners = { events, fn: autoUnlock };
+        events.forEach((ev) => {
+          document.addEventListener(ev, autoUnlock, { capture: true, passive: true });
+        });
+      }
+      if (typeof wx !== 'undefined') {
+        if (typeof wx.onTouchEnd === 'function') {
+          const wxUnlock = () => {
+            unlock();
+            if (unlocked && actx && actx.state === 'running' && typeof wx.offTouchEnd === 'function') {
+              try { wx.offTouchEnd(wxUnlock); } catch (e) {}
+            }
+          };
+          wx.onTouchEnd(wxUnlock);
+        }
+        if (typeof wx.onAudioInterruptionBegin === 'function') {
+          wx.onAudioInterruptionBegin(() => { appInterrupted = true; });
+        }
+        if (typeof wx.onAudioInterruptionEnd === 'function') {
+          wx.onAudioInterruptionEnd(resumeAfterInterruption);
+        }
+      }
+      if (App.Platform && typeof App.Platform.onVisibilityChange === 'function') {
+        App.Platform.onVisibilityChange((visible) => {
+          if (!visible) {
+            appInterrupted = true;
+            if (actx && actx.state === 'running' && actx.suspend) {
+              try { const p = actx.suspend(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+            }
+          } else {
+            resumeAfterInterruption();
+          }
+        });
+      }
     }
   }
 
@@ -301,11 +433,11 @@
       masterGain.connect(outNode);
 
       bgmGain = actx.createGain();
-      bgmGain.gain.value = 0.48;
+      bgmGain.gain.value = (!muted && userSettings.bgmEnabled) ? (0.60 * userSettings.bgmVolume) : 0;
       bgmGain.connect(masterGain);
 
       sfxGain = actx.createGain();
-      sfxGain.gain.value = 0.85;
+      sfxGain.gain.value = (!muted && userSettings.sfxEnabled) ? (0.85 * userSettings.sfxVolume) : 0;
       sfxGain.connect(masterGain);
 
       // 温润古殿长混响回声总线（让洞箫/古筝/编钟自带悠远山水余韵）
@@ -343,14 +475,55 @@
   }
 
   function unlock() {
+    if (!hasUserActivation()) return;
     const ctx = ensureContext();
     if (!ctx) return;
-    if (ctx.state === 'suspended' && ctx.resume) {
-      ctx.resume();
+    if (ctx.state !== 'running' && ctx.resume) {
+      try {
+        const p = ctx.resume();
+        if (p && typeof p.then === 'function') {
+          p.then(() => {
+            unlocked = true;
+            appInterrupted = false;
+            nextNoteTime = Math.max(nextNoteTime, ctx.currentTime + 0.05);
+            removeUnlockListeners();
+          }).catch(() => {});
+        }
+      } catch (e) {
+        // 忽略尚未获得手势激活时的异常
+      }
     }
-    if (!unlocked) {
+    if (ctx.state === 'running' && !unlocked) {
       unlocked = true;
       nextNoteTime = ctx.currentTime + 0.05;
+      removeUnlockListeners();
+    }
+  }
+
+  function applyAudioGains() {
+    muted = !!userSettings.muted;
+    if (!actx && !hasUserActivation()) return;
+    if (muted && !actx) return;
+    const ctx = ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    if (masterGain) {
+      masterGain.gain.cancelScheduledValues(now);
+      masterGain.gain.setTargetAtTime(muted ? 0 : 0.78, now, 0.03);
+    }
+    if (bgmGain) {
+      const targetBgm = (!muted && userSettings.bgmEnabled) ? (0.60 * userSettings.bgmVolume) : 0;
+      bgmGain.gain.cancelScheduledValues(now);
+      bgmGain.gain.setTargetAtTime(targetBgm, now, 0.03);
+    }
+    if (sfxGain) {
+      const targetSfx = (!muted && userSettings.sfxEnabled) ? (0.85 * userSettings.sfxVolume) : 0;
+      sfxGain.gain.cancelScheduledValues(now);
+      sfxGain.gain.setTargetAtTime(targetSfx, now, 0.03);
+    }
+    if (!muted && (userSettings.bgmEnabled || userSettings.sfxEnabled)) {
+      unlock();
+      nextNoteTime = Math.max(nextNoteTime, now + 0.05);
     }
   }
 
@@ -359,20 +532,9 @@
   }
 
   function toggleMute() {
-    muted = !muted;
-    if (App.Platform && App.Platform.saveStorage) {
-      App.Platform.saveStorage(MUTE_STORAGE_KEY, { muted });
-    }
-    const ctx = ensureContext();
-    if (ctx && masterGain) {
-      const now = ctx.currentTime;
-      masterGain.gain.cancelScheduledValues(now);
-      masterGain.gain.setTargetAtTime(muted ? 0 : 0.78, now, 0.04);
-      if (!muted) {
-        unlock();
-        nextNoteTime = Math.max(nextNoteTime, now + 0.05);
-      }
-    }
+    userSettings.muted = !userSettings.muted;
+    saveSettingsToStorage();
+    applyAudioGains();
     return muted;
   }
 
@@ -395,6 +557,7 @@
     o1.frequency.setValueAtTime(freq * 1.007, t);
     o1.frequency.exponentialRampToValueAtTime(freq, t + 0.035);
     o1.connect(g);
+    autoDisconnect(o1, [g]);
     o1.start(t);
     o1.stop(t + dur + 0.02);
 
@@ -406,6 +569,7 @@
     g2.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.45);
     o2.connect(g2);
     g2.connect(out);
+    autoDisconnect(o2, [g2]);
     o2.start(t);
     o2.stop(t + dur * 0.48);
 
@@ -422,6 +586,7 @@
       ns.connect(bp);
       bp.connect(ng);
       ng.connect(out);
+      autoDisconnect(ns, [bp, ng]);
       ns.start(t);
       ns.stop(t + 0.025);
     }
@@ -452,8 +617,9 @@
     osc.frequency.setValueAtTime(freq * 1.01, t);
     osc.frequency.exponentialRampToValueAtTime(freq, t + 0.02);
 
+    let lp = null;
     if (actx.createBiquadFilter) {
-      const lp = actx.createBiquadFilter();
+      lp = actx.createBiquadFilter();
       lp.type = 'lowpass';
       lp.frequency.setValueAtTime(Math.min(4800, freq * 5.2), t);
       lp.frequency.exponentialRampToValueAtTime(Math.max(420, freq * 1.5), t + 0.18);
@@ -462,6 +628,7 @@
     } else {
       osc.connect(g);
     }
+    autoDisconnect(osc, [lp, g]);
     osc.start(t);
     osc.stop(t + Math.min(0.55, dur + 0.02));
   }
@@ -500,6 +667,9 @@
     lfoGain.connect(osc.frequency);
 
     osc.connect(g);
+    autoDisconnect(osc, [g]);
+    autoDisconnect(osc2, [g2]);
+    autoDisconnect(lfo, [lfoGain]);
     osc.start(t);
     osc2.start(t);
     lfo.start(t);
@@ -518,8 +688,9 @@
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
     let target = g;
+    let lp = null;
     if (actx.createBiquadFilter) {
-      const lp = actx.createBiquadFilter();
+      lp = actx.createBiquadFilter();
       lp.type = 'lowpass';
       lp.frequency.value = 540;
       lp.connect(g);
@@ -537,6 +708,7 @@
       subG.gain.value = idx === 0 ? 0.75 : 0.35;
       o.connect(subG);
       subG.connect(target);
+      autoDisconnect(o, idx === 1 ? [subG, lp, g] : [subG]);
       o.start(t);
       o.stop(t + dur + 0.05);
     });
@@ -560,6 +732,7 @@
       o.connect(g);
       g.connect(out);
       if (echoIn && out === bgmGain && idx === 0) g.connect(echoIn);
+      autoDisconnect(o, [g]);
       o.start(t);
       o.stop(t + d + 0.02);
     });
@@ -586,12 +759,13 @@
     g.connect(out);
     if (echoIn && out === bgmGain) g.connect(echoIn);
 
-    [-3.5, 3.5].forEach((detune) => {
+    [-3.5, 3.5].forEach((detune, idx) => {
       const o = actx.createOscillator();
       o.type = 'sawtooth';
       o.frequency.setValueAtTime(freq, t);
       if (o.detune) o.detune.value = detune;
       o.connect(lp || g);
+      autoDisconnect(o, idx === 1 ? [lp, g] : null);
       o.start(t);
       o.stop(t + dur + 0.03);
     });
@@ -611,6 +785,7 @@
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
       o.connect(g);
       g.connect(out);
+      autoDisconnect(o, [g]);
       o.start(t);
       o.stop(t + 0.10);
       return;
@@ -628,6 +803,7 @@
     g.gain.exponentialRampToValueAtTime(0.0001, t + (isHeavy ? 0.26 : 0.16));
     o.connect(g);
     g.connect(out);
+    autoDisconnect(o, [g]);
     o.start(t);
     o.stop(t + 0.28);
 
@@ -643,6 +819,7 @@
       ns.connect(bp);
       bp.connect(ng);
       ng.connect(out);
+      autoDisconnect(ns, [bp, ng]);
       ns.start(t);
       ns.stop(t + 0.04);
     }
@@ -743,11 +920,9 @@
   }
 
   function update() {
-    if (muted || bgmPausedForResult) return;
-    if (!actx) ensureContext();
-    if (!actx) return;
+    if (muted || !userSettings.bgmEnabled || userSettings.bgmVolume <= 0.01 || bgmPausedForResult || appInterrupted || !actx) return;
     if (actx.state === 'running' && !unlocked) unlocked = true;
-    if (!unlocked || actx.state === 'suspended') return;
+    if (!unlocked || actx.state !== 'running') return;
 
     const themeCfg = BGM_THEMES[currentTheme] || BGM_THEMES.map;
     const stepDur = 60 / themeCfg.bpm / 2; // 八分音符步长
@@ -815,15 +990,25 @@
     ns.connect(bp);
     bp.connect(g);
     g.connect(sfxGain);
+    autoDisconnect(ns, [bp, g]);
     ns.start(t);
     ns.stop(t + dur + 0.02);
   }
 
   function playSfx(name, extra) {
-    if (muted) return;
+    if (muted || !userSettings.sfxEnabled || userSettings.sfxVolume <= 0.01 || appInterrupted) return;
+    if (!actx && !hasUserActivation()) return;
     const ctx = ensureContext();
     if (!ctx) return;
-    if (ctx.state === 'suspended' && ctx.resume) ctx.resume();
+    if (ctx.state !== 'running') {
+      if (hasUserActivation() && ctx.resume) {
+        try {
+          const p = ctx.resume();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch (e) {}
+      }
+      return;
+    }
 
     const nowMs = Date.now();
     const minGap = SFX_THROTTLE_MS[name] || 0;
@@ -843,6 +1028,7 @@
         g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
         o.connect(g);
         g.connect(sfxGain);
+        autoDisconnect(o, [g]);
         o.start(t);
         o.stop(t + 0.055);
         break;
@@ -868,6 +1054,7 @@
         g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
         o.connect(g);
         g.connect(sfxGain);
+        autoDisconnect(o, [g]);
         o.start(t);
         o.stop(t + 0.09);
         playNoiseSweep(t + 0.01, 0.13, 2800, 950, 0.18, 3.2);
@@ -892,6 +1079,7 @@
         g.gain.exponentialRampToValueAtTime(0.0001, t + 0.085);
         o.connect(g);
         g.connect(sfxGain);
+        autoDisconnect(o, [g]);
         o.start(t);
         o.stop(t + 0.09);
         break;
@@ -923,6 +1111,7 @@
         g.gain.exponentialRampToValueAtTime(0.0001, t + 0.032);
         o.connect(g);
         g.connect(sfxGain);
+        autoDisconnect(o, [g]);
         o.start(t);
         o.stop(t + 0.036);
         break;
@@ -998,6 +1187,44 @@
 
   init();
 
+  App.Settings = {
+    DEFAULTS: Object.assign({}, DEFAULT_SETTINGS),
+    get(key) {
+      return key ? userSettings[key] : Object.assign({}, userSettings);
+    },
+    set(key, val) {
+      if (!(key in DEFAULT_SETTINGS)) return;
+      userSettings[key] = typeof DEFAULT_SETTINGS[key] === 'boolean'
+        ? !!val
+        : clamp01(val, DEFAULT_SETTINGS[key]);
+      if (key === 'bgmVolume' && userSettings.bgmVolume > 0 && !userSettings.bgmEnabled) {
+        userSettings.bgmEnabled = true;
+      }
+      if (key === 'sfxVolume' && userSettings.sfxVolume > 0 && !userSettings.sfxEnabled) {
+        userSettings.sfxEnabled = true;
+      }
+      if ((key === 'bgmEnabled' && userSettings.bgmEnabled) || (key === 'sfxEnabled' && userSettings.sfxEnabled)) {
+        if (userSettings.muted) userSettings.muted = false;
+      }
+      saveSettingsToStorage();
+      if (key === 'muted' || key === 'bgmEnabled' || key === 'bgmVolume' || key === 'sfxEnabled' || key === 'sfxVolume') {
+        applyAudioGains();
+      }
+      if (App.Main && typeof App.Main.markDirty === 'function') App.Main.markDirty();
+    },
+    toggle(key) {
+      if (!(key in DEFAULT_SETTINGS) || typeof DEFAULT_SETTINGS[key] !== 'boolean') return false;
+      this.set(key, !userSettings[key]);
+      return userSettings[key];
+    },
+    reset() {
+      Object.assign(userSettings, DEFAULT_SETTINGS);
+      saveSettingsToStorage();
+      applyAudioGains();
+      if (App.Main && typeof App.Main.markDirty === 'function') App.Main.markDirty();
+    },
+  };
+
   App.Audio = {
     unlock,
     update,
@@ -1005,5 +1232,6 @@
     playSfx,
     isMuted,
     toggleMute,
+    syncSettings: applyAudioGains,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

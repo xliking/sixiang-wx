@@ -6,7 +6,8 @@
     const H = App.Platform.LOGICAL_H;
     const st = App.State.get();
     const dungeons = App.Config.getBeastDungeons();
-    const unlocked = (st.lordLevel || 1) >= App.State.BEAST_UNLOCK_LORD_LV;
+    const lordLv = st.lordLevel || 1;
+    const anyUnlocked = lordLv >= (App.State.BEAST_UNLOCK_LORD_LV || 15);
 
     ctx.fillStyle = '#d9c08c';
     ctx.fillRect(0, 0, W, H);
@@ -18,14 +19,12 @@
     ctx.fillStyle = '#451a03';
     ctx.font = 'bold 17px "PingFang SC", serif';
     ctx.textAlign = 'left';
-    ctx.fillText('四象神兽高难抓捕副本（击败神兽立即判胜，战后开启几率抓捕！）', 28, 92);
-    ctx.fillStyle = unlocked ? '#15803d' : '#dc2626';
+    ctx.fillText('四象神兽高难抓捕副本（击败神兽立即判胜，战后开启几率抓捕！）', 28, 92, W - 150);
+    ctx.fillStyle = anyUnlocked ? '#15803d' : '#dc2626';
     ctx.font = 'bold 12px "PingFang SC", sans-serif';
     ctx.fillText(
-      unlocked
-        ? `✓ 主公已达 Lv.${st.lordLevel}，四象秘境已开启！注意躲避神兽地面红圈大招预警！`
-        : `🔒 需主公达到 Lv.15 方可抓捕四象神兽（当前主公 Lv.${st.lordLevel || 1}，请先征战九州关卡获取主公经验！）`,
-      28, 114
+      `阶梯解锁：青龙 Lv.15 · 朱雀 Lv.20 · 玄武 Lv.25 · 白虎 Lv.30（当前主公 Lv.${lordLv}）`,
+      28, 114, W - 150
     );
     ctx.restore();
 
@@ -40,18 +39,20 @@
     dungeons.forEach((d, idx) => {
       const bCfg = App.Config.BEASTS[d.beastId];
       const owned = st.ownedBeasts[d.beastId];
+      const reqLv = App.Config.getBeastUnlockLv ? App.Config.getBeastUnlockLv(d.beastId) : (d.unlockLordLv || 15);
+      const cardUnlocked = lordLv >= reqLv;
       const cx = 28 + idx * (cardW + gap);
       const cy = 126;
 
       App.UI.drawPanel(ctx, cx, cy, cardW, cardH, {
         r: 12,
         bg: '#241811',
-        border: unlocked ? bCfg.glow : '#57534e',
+        border: cardUnlocked ? bCfg.glow : '#57534e',
         lineWidth: 2.2,
       });
 
       ctx.save();
-      if (!unlocked) ctx.globalAlpha = 0.55;
+      if (!cardUnlocked) ctx.globalAlpha = 0.50;
       App.Portraits.drawBeastPortrait(ctx, d.beastId, cx + 48, cy + 14, 120, { radius: 14, lineWidth: 2.5 });
       ctx.restore();
 
@@ -63,27 +64,32 @@
 
       ctx.fillStyle = '#fde047';
       ctx.font = 'bold 11px "PingFang SC", sans-serif';
-      ctx.fillText(`绝技【${bCfg.skillName}】`, cx + cardW / 2, cy + 174);
+      ctx.fillText(`绝技【${bCfg.skillName}】`, cx + cardW / 2, cy + 174, cardW - 18);
 
       ctx.fillStyle = '#cbd5e1';
       ctx.font = '10px "PingFang SC", sans-serif';
       App.UI.drawWrappedText(ctx, bCfg.skillDesc, cx + cardW / 2, cy + 190, cardW - 20, 14, 'center');
 
-      ctx.fillStyle = owned ? '#4ade80' : '#fca5a5';
+      ctx.fillStyle = owned ? '#4ade80' : (cardUnlocked ? '#fca5a5' : '#94a3b8');
       ctx.font = 'bold 11px "PingFang SC", sans-serif';
-      ctx.fillText(owned ? `已抓捕 Lv.${owned.lv}（再抓进阶）` : `基础抓捕率 ${Math.round(bCfg.baseCatchRate * 100)}% (金索翻倍)`, cx + cardW / 2, cy + 236);
+      ctx.fillText(
+        owned ? `已抓捕 Lv.${owned.lv}（再抓进阶）` : `Lv.${reqLv}可抓 · 基础率 ${Math.round(bCfg.baseCatchRate * 100)}% (金索翻倍)`,
+        cx + cardW / 2, cy + 236, cardW - 16
+      );
 
-      ctx.fillStyle = '#86efac';
-      ctx.font = '10px "PingFang SC", sans-serif';
-      ctx.fillText(`高难度 · 推荐战力 ${d.recommendedLv * 480}`, cx + cardW / 2, cy + 254);
+      const recPower = App.Config.scaleRecommendedPower('beast', d.recommendedPower || d.recommendedLv * 1850, d);
+      const canBeat = App.State.getTeamPower() >= recPower;
+      ctx.fillStyle = canBeat ? '#86efac' : '#fca5a5';
+      ctx.font = 'bold 10.5px "PingFang SC", sans-serif';
+      ctx.fillText(`高难度 · 推荐战力 ${recPower}`, cx + cardW / 2, cy + 254, cardW - 18);
       ctx.restore();
 
-      if (!unlocked) {
-        App.UI.drawButton(ctx, cx + 20, cy + 268, cardW - 40, 46, '🔒 主公 Lv.15 解锁', {
-          r: 9, bg: '#57534e', border: '#a8a29e', fontSize: 12,
-          subText: '点击前往主线升级',
+      if (!cardUnlocked) {
+        App.UI.drawButton(ctx, cx + 20, cy + 268, cardW - 40, 46, `🔒 主公 Lv.${reqLv} 解锁`, {
+          r: 9, bg: '#57534e', border: '#a8a29e', fontSize: 12.5,
+          subText: `当前 Lv.${lordLv} · 前往主线升级`,
         }, () => {
-          App.UI.showToast(`当前主公 Lv.${st.lordLevel || 1}，达到 Lv.15 即可抓捕神兽！`, '#fbbf24');
+          App.UI.showToast(`当前主公 Lv.${lordLv}，达到 Lv.${reqLv} 方可挑战抓捕【${bCfg.name}】！`, '#fbbf24');
           App.Main.goScene('map');
         });
       } else {
