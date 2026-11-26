@@ -27,6 +27,75 @@
     'pierce_column', 'precision_mercy', 'heavy_cleave', 'poison_curse',
   ]);
 
+  function normalizeUnitTriangleCat(u) {
+    if (!u || u.isProp) return '';
+    const raw = u.unitType || u.troopId || u.id || '';
+    if (raw === 'cavalry') return 'cavalry';
+    if (raw === 'archer' || raw === 'mage') return 'archer';
+    if (raw === 'spear' || raw === 'pike') return 'spear';
+    return '';
+  }
+
+  function getSideFaction(battle, side) {
+    if (!battle) return null;
+    return side === 'player' ? battle.playerFaction : battle.enemyFaction;
+  }
+
+  function getSideHealMult(battle, side) {
+    const fac = getSideFaction(battle, side);
+    return 1 + ((fac && fac.healBonus) || 0);
+  }
+
+  function getSideFireMult(battle, side) {
+    const fac = getSideFaction(battle, side);
+    const bz = (side === 'player' && battle && battle.bazhenMods) ? (battle.bazhenMods.fireMult || 0) : 0;
+    return 1 + ((fac && fac.fireBonus) || 0) + bz;
+  }
+
+  function recordStat(battle, u, field, amount) {
+    if (!battle || !u || amount <= 0 || u.side !== 'player' || (u.kind !== 'general' && u.kind !== 'beast')) return;
+    battle.combatStats = battle.combatStats || {};
+    const key = u.kind + ':' + u.id;
+    let rec = battle.combatStats[key];
+    if (!rec) {
+      rec = {
+        key,
+        id: u.id,
+        kind: u.kind,
+        name: u.name || u.id,
+        dmgDealt: 0,
+        dmgTaken: 0,
+        healDone: 0,
+      };
+      battle.combatStats[key] = rec;
+    }
+    rec[field] = (rec[field] || 0) + Math.round(amount);
+  }
+
+  function getBattleStatsReport(battle) {
+    if (!battle) return [];
+    const map = Object.assign({}, battle.combatStats || {});
+    (battle.units || []).forEach((u) => {
+      if (u.side === 'player' && (u.kind === 'general' || u.kind === 'beast')) {
+        const key = u.kind + ':' + u.id;
+        if (!map[key]) {
+          map[key] = { key, id: u.id, kind: u.kind, name: u.name, dmgDealt: 0, dmgTaken: 0, healDone: 0 };
+        }
+        map[key].alive = !!u.alive;
+      }
+    });
+    const list = Object.values(map);
+    let mvp = null;
+    let bestScore = -1;
+    list.forEach((it) => {
+      const sc = (it.dmgDealt || 0) + (it.healDone || 0) * 1.15 + (it.dmgTaken || 0) * 0.45;
+      if (sc > bestScore) { bestScore = sc; mvp = it; }
+    });
+    if (mvp && bestScore > 0) mvp.isMvp = true;
+    list.sort((a, b) => ((b.dmgDealt + b.healDone) - (a.dmgDealt + a.healDone)));
+    return list;
+  }
+
   function pickGeneralSpriteKey(gid, weaponEq) {
     if (App.Config.resolveGeneralCombatProfile) {
       return App.Config.resolveGeneralCombatProfile(gid, weaponEq).spriteKey;
@@ -108,11 +177,25 @@
       level.raid.seconds = opts.serverBattle.seconds || level.raid.seconds;
     }
     const st = App.State.get();
-    const fac = App.Config.FACTIONS[st.factionId];
+    const fac = App.Config.FACTIONS[st.factionId] || {};
+    const facSpdBonus = (fac.atkSpeedMult && fac.atkSpeedMult > 1) ? (fac.atkSpeedMult - 1) : 0;
+    const oppFac = (mode === 'arena' && arenaMatch && arenaMatch.faction && App.Config.FACTIONS[arenaMatch.faction])
+      ? App.Config.FACTIONS[arenaMatch.faction]
+      : null;
 
     let uidCounter = 1;
     const units = [];
     const towers = [];
+
+    // 四象护法助战槽（最多2只，开战赋予全体名将护体灵盾与攻伐光环）
+    const supportBeasts = [];
+    (st.supportBeastIds || []).slice(0, 2).forEach((sbid) => {
+      if (sbid && sbid !== st.activeBeastId && st.ownedBeasts[sbid] && App.Config.BEASTS[sbid]) {
+        supportBeasts.push(App.Config.BEASTS[sbid]);
+      }
+    });
+    const supShieldPct = supportBeasts.length * 0.08;
+    const supAtkBuffPct = supportBeasts.length * 0.06;
 
     // 1. 我方最多 5 名出战将领
     const artBonus = App.Config.computeArtifactBonus ? App.Config.computeArtifactBonus(st.ownedArtifacts, st.activeArtifactId) : { activeRage: 0 };
@@ -125,6 +208,7 @@
       const cProf = App.Config.resolveGeneralCombatProfile
         ? App.Config.resolveGeneralCombatProfile(cfg, eqMap.weapon)
         : null;
+      const boundBCfg = stats.boundBeastId ? App.Config.BEASTS[stats.boundBeastId] : null;
       units.push({
         uid: uidCounter++,
         side: 'player',
@@ -140,6 +224,7 @@
         unitType: cfg.type,
         troopId: App.Config.getGeneralTroopId ? App.Config.getGeneralTroopId(gid) : (cfg.troopId || 'spear'),
         equips: eqMap,
+        boundBeastCfg: boundBCfg,
         weaponVfx: App.Config.resolveWeaponVfx ? App.Config.resolveWeaponVfx(eqMap.weapon) : null,
         setVfx: (App.Config.resolveSetVfx ? App.Config.resolveSetVfx(eqArr) : null) || (stats.ascendInfo ? stats.ascendInfo.auraVfx : null),
         needsManualAim: !(cfg.skillPower === 0) && !cfg.isFullscreenSkill && !/【全屏/.test(cfg.skillDesc || '') && MANUAL_AIM_SKILLS.has(cfg.skillType),
@@ -147,6 +232,10 @@
         y: 214 + idx * 39,
         maxHp: stats.hp,
         hp: stats.hp,
+        shieldHp: supShieldPct > 0 ? Math.round(stats.hp * supShieldPct) : 0,
+        shieldTimer: supShieldPct > 0 ? 12.0 : 0,
+        atkBuffPct: supAtkBuffPct > 0 ? supAtkBuffPct : 0,
+        atkBuffTimer: supAtkBuffPct > 0 ? 12.0 : 0,
         atk: Math.round(stats.atk * (fac.atkMult || 1)),
         def: stats.def,
         crit: stats.crit,
@@ -154,7 +243,7 @@
         lifesteal: stats.lifesteal || 0,
         dmgReduce: stats.dmgReduce || 0,
         skillDmgPct: stats.skillDmgPct || 0,
-        spdPct: stats.spdPct || 0,
+        spdPct: (stats.spdPct || 0) + facSpdBonus,
         spd: 122 + (cfg.type === 'cavalry' ? 20 : 0),
         range: (cProf ? cProf.isRanged : (cfg.type === 'archer')) ? 200 : 54,
         rage: Math.min(100, 25 + (stats.initRage || artBonus.activeRage || 0)), // ★ 开局蓄势怒气 + 套装与供奉法宝先机怒气！
@@ -176,6 +265,9 @@
       const bStats = App.State.getBeastStats(st.activeBeastId);
       const bEquips = App.State.getBeastEquippedMap(st.activeBeastId);
       const bEqArr = Object.values(bEquips);
+      const bDispName = App.Config.getBeastDisplayName
+        ? App.Config.getBeastDisplayName(bCfg.id, st.ownedBeasts[st.activeBeastId])
+        : bCfg.name;
       playerBeastUnit = {
         uid: uidCounter++,
         side: 'player',
@@ -184,11 +276,12 @@
         id: bCfg.id,
         lv: bStats.lv,
         star: bStats.star,
+        ascend: bStats.ascend || '',
         equips: bEquips,
         weaponVfx: App.Config.resolveWeaponVfx ? App.Config.resolveWeaponVfx(bEquips.beast_claw) : null,
-        setVfx: App.Config.resolveSetVfx ? App.Config.resolveSetVfx(bEqArr) : null,
+        setVfx: (App.Config.resolveSetVfx ? App.Config.resolveSetVfx(bEqArr) : null) || (bStats.ascendInfo ? bStats.ascendInfo.auraVfx : null),
         spriteKey: 'beast_sprite_' + bCfg.id,
-        name: bCfg.name,
+        name: bDispName,
         unitType: 'cavalry',
         x: 416,
         y: 298,
@@ -283,10 +376,16 @@
       });
       if (arenaMatch.beast) {
         const bCfg = App.Config.BEASTS[arenaMatch.beast];
-        const sc = 1 + (arenaMatch.lv - 1) * 0.16;
+        const oppBAsc = arenaMatch.beastAscend && App.Config.getBeastAscendInfo
+          ? App.Config.getBeastAscendInfo({ ascend: arenaMatch.beastAscend, ascendTier: arenaMatch.beastAscendTier || 1 })
+          : null;
+        const oppBName = App.Config.getBeastDisplayName ? App.Config.getBeastDisplayName(bCfg.id, arenaMatch.beastAscend || '') : bCfg.name;
+        const sc = (1 + (arenaMatch.lv - 1) * 0.16) * (oppBAsc ? oppBAsc.statMult : 1);
         units.push({
           uid: uidCounter++, side: 'enemy', facing: -1, kind: 'beast',
-          id: bCfg.id, spriteKey: 'beast_sprite_' + bCfg.id, name: bCfg.name, unitType: 'spear',
+          id: bCfg.id, spriteKey: 'beast_sprite_' + bCfg.id, name: oppBName, unitType: 'spear',
+          ascend: arenaMatch.beastAscend || '',
+          setVfx: oppBAsc ? oppBAsc.auraVfx : null,
           x: WORLD_W - 420, y: 295,
           maxHp: Math.round(bCfg.hp * 0.85 * sc * aSolMult.hpMult), hp: Math.round(bCfg.hp * 0.85 * sc * aSolMult.hpMult),
           atk: Math.round(bCfg.atk * 0.55 * sc * aSolMult.atkMult), def: Math.round(bCfg.def * 0.65 * sc),
@@ -304,17 +403,19 @@
         targetBeastId = level.beastId;
         const bCfg = App.Config.BEASTS[level.beastId];
         const mult = level.beastScale || 6.0;
+        const wildScale = level.visualScale || 1.52;
         units.push({
           uid: uidCounter++, side: 'enemy', facing: -1, kind: 'beast',
           id: bCfg.id, spriteKey: 'beast_sprite_' + bCfg.id, name: bCfg.name, unitType: 'spear',
           isWildBeast: true,
-          x: WORLD_W - 250, y: 298,
+          scale: wildScale,
+          x: WORLD_W - 320, y: bCfg.id === 'zhuque' ? 312 : 304,
           maxHp: Math.round(bCfg.hp * 0.75 * mult * diff.hpMult),
           hp: Math.round(bCfg.hp * 0.75 * mult * diff.hpMult),
           atk: Math.round(bCfg.atk * 0.34 * (mult * 0.68) * diff.atkMult),
           def: Math.round(bCfg.def * 0.34 * 1.55 * diff.defMult),
           crit: 0.25, critDmg: 0.28, dmgReduce: 0.24, skillDmgPct: 0.22,
-          spd: 72, range: 78, rage: 55,
+          spd: 72, range: 88, rage: 55,
           beastSkillTimer: 3.8,
           atkTimer: 0.70, attackAnim: 0, runPhase: 0, stunTimer: 0, hitFlash: 0, moving: false, alive: true,
           beastCfg: bCfg,
@@ -331,12 +432,14 @@
         : 1.28;
       const initRage = (mode === 'city' && stageOrder <= 1) ? 0 : Math.min(100, Math.max(0, dCfg.enemyInitRage !== undefined ? dCfg.enemyInitRage : 28));
 
-      // 分轮作战：副将在中间几轮登场，守将（BOSS）只在最后一轮出现。副将不足时取关卡守将补位
+      // 分轮作战：副将在中间几轮登场，守将（BOSS）只在最后一轮出现；神兽挑战仅单轮迎战巨型神兽，不出副将与敌方小兵
       const plan = getRoundPlan(mode, level);
       // 前期章节（副将数为 0）不出副将，只保留守将
-      const egList = (level.enemyGenerals || []).filter((e) => e.isBoss || mode !== 'city' || plan.subGenerals > 0);
-      for (let k = 1; (mode === 'city' || mode === 'beast') && egList.filter((e) => !e.isBoss).length < plan.subGenerals && k <= 16; k++) {
-        const refOrd = Math.max(1, (mode === 'beast' ? stageOrder + k * 3 : stageOrder - k));
+      const egList = mode === 'beast'
+        ? []
+        : (level.enemyGenerals || []).filter((e) => e.isBoss || mode !== 'city' || plan.subGenerals > 0);
+      for (let k = 1; mode === 'city' && egList.filter((e) => !e.isBoss).length < plan.subGenerals && k <= 16; k++) {
+        const refOrd = Math.max(1, stageOrder - k);
         const prev = App.Config.STAGES[refOrd];
         if (prev && prev.bossId && !egList.some((e) => e.id === prev.bossId)) {
           egList.push({ id: prev.bossId, lv: Math.max(1, (level.recommendedLv || stageLv) - 1), isBoss: false });
@@ -371,7 +474,7 @@
         });
       });
 
-      const guardCount = isRaid ? 0 : (mode === 'beast' ? 9 : Math.min(11, 3 + Math.floor(stageOrder / 2)));
+      const guardCount = (isRaid || mode === 'beast') ? 0 : Math.min(11, 3 + Math.floor(stageOrder / 2));
       for (let i = 0; i < guardCount; i++) {
         const tCard = TROOP_CARDS[i % 4];
         units.push(makeSoldier(uidCounter++, 'enemy', tCard, 800 + (i % 4) * 120, 215 + (i % 4) * 42, stageLv, enemySoldierMult));
@@ -447,6 +550,7 @@
     // 特殊副本：清掉常规敌军，按副本规则布置（宝箱车、帅帐、粮车、凶兽、连闯五关等）
     const special = (level && level.special) ? buildSpecial(mode, level, units, towers, roundQueue, () => uidCounter++) : null;
     if (special && special.totalRounds) totalRounds = special.totalRounds;
+    if (special && special.leadBeastId) targetBeastId = special.leadBeastId;
 
     // ★ 布置双方大本营【主营】与【一上一下对称双箭垒】（享受演武营等级加成，且箭垒高血量耐战！）
     const campCfg = App.Config.TROOP_CAMP || {};
@@ -620,9 +724,21 @@
       : null;
 
     if (App.Audio) App.Audio.playSfx('battle_start');
+    const savedAutoSkill = App.Platform && App.Platform.loadStorage ? !!App.Platform.loadStorage('sixiang_auto_skill') : false;
+    const savedAutoBeast = App.Platform && App.Platform.loadStorage ? (App.Platform.loadStorage('sixiang_auto_beast') !== false) : true;
 
     return {
       mode, level, arenaMatch,
+      playerFaction: fac,
+      enemyFaction: oppFac,
+      supportBeasts,
+      combatStats: {},
+      autoSkill: savedAutoSkill,
+      autoBeast: savedAutoBeast,
+      bazhenMods: mode === 'bazhen' ? {} : null,
+      chosenStratagems: [],
+      pendingStratagems: null,
+      _bazhenInitOffered: false,
       chapter: chapterNum,
       chapterTheme,
       battleBgKey,
@@ -791,14 +907,78 @@
       out.totalRounds = waves;
       out.duration = cfg.duration || 90;
       out.waveEvery = out.duration / waves;
-    } else if (mode === 'pass' || mode === 'xian' || mode === 'mo') {
+    } else if (mode === 'beast_xian' || mode === 'beast_mo') {
+      const isXian = mode === 'beast_xian';
+      const defPasses = isXian
+        ? [{ name: '东海神渊', beastId: 'qinglong' }, { name: '昆仑瑞境', beastId: 'qilin' }, { name: '太虚封神坛', beastId: 'zhulong' }]
+        : [{ name: '西极煞渊', beastId: 'baihu' }, { name: '噬天魔窟', beastId: 'taotie' }, { name: '归墟魔兽坛', beastId: 'hundun' }];
+      const passes = (cfg.passes && cfg.passes.length) ? cfg.passes : defPasses;
+      const soldierTag = isXian ? '护坛灵卫' : '洪荒魔卫';
+      passes.forEach((p, i) => {
+        const list = soldiers(4 + i, i === 0 ? 760 : WORLD_W - 180, lv + i, soldierTag);
+        const bid = p.beastId || (isXian ? 'qinglong' : 'baihu');
+        const bCfg = App.Config.BEASTS[bid] || App.Config.BEASTS.qinglong;
+        if (bCfg) {
+          const hpScale = (4.6 + i * 1.15) * (1 + lv * 0.085);
+          const atkScale = (1.55 + i * 0.25) * (1 + lv * 0.045);
+          list.push({
+            uid: nextUid(),
+            side: 'enemy',
+            facing: -1,
+            kind: 'beast',
+            id: bCfg.id,
+            spriteKey: 'beast_sprite_' + bCfg.id,
+            name: `${p.name} · ${isXian ? '神.' : '魔.'}${bCfg.name}`,
+            unitType: 'spear',
+            isWildBeast: true,
+            scale: 1.46 + i * 0.05,
+            ascend: isXian ? 'xian' : 'mo',
+            setVfx: {
+              auraVfx: isXian ? 'jade_vitality' : 'shadow_phantom',
+              auraName: isXian ? '九天神罡阵' : '九幽魔煞阵',
+              auraColor: isXian ? '#67e8f9' : '#e879f9',
+              auraSubColor: isXian ? '#fef08a' : '#fb7185',
+              vfxTier: 3,
+              quality: 'gold',
+            },
+            x: i === 0 ? 1020 : WORLD_W - 140,
+            y: bCfg.id === 'zhuque' ? 308 : 298,
+            maxHp: Math.round(bCfg.hp * 0.72 * hpScale * diff.hpMult),
+            hp: Math.round(bCfg.hp * 0.72 * hpScale * diff.hpMult),
+            atk: Math.round(bCfg.atk * 0.34 * atkScale * diff.atkMult),
+            def: Math.round(bCfg.def * 0.38 * 1.55 * diff.defMult),
+            crit: 0.24,
+            critDmg: 0.30,
+            dmgReduce: 0.22,
+            skillDmgPct: 0.24,
+            spd: 74,
+            range: 86,
+            rage: 50,
+            beastSkillTimer: 4.2,
+            atkTimer: 0.72,
+            attackAnim: 0,
+            runPhase: 0,
+            stunTimer: 0,
+            hitFlash: 0,
+            moving: false,
+            alive: true,
+            beastCfg: bCfg,
+          });
+        }
+        roundQueue.push(list);
+      });
+      const lastPass = passes[passes.length - 1];
+      out.leadBeastId = (lastPass && lastPass.beastId) || (isXian ? 'zhulong' : 'hundun');
+      (roundQueue.shift() || []).forEach((u) => units.push(u));
+      out.totalRounds = Math.max(1, passes.length);
+    } else if (mode === 'pass' || mode === 'xian' || mode === 'mo' || mode === 'bazhen') {
       const defPasses = mode === 'xian'
         ? [{ name: '南天仙门', generalId: 'zhugeliang' }, { name: '紫霄雷坛', generalId: 'zhaoyun' }, { name: '九天凌霄台', generalId: 'guanyu' }]
         : (mode === 'mo'
           ? [{ name: '黄泉血河', generalId: 'dongzhuo' }, { name: '炼狱魔坛', generalId: 'zhangjiao' }, { name: '九幽魔神殿', generalId: 'lvbu' }]
           : [{ name: '东岭关', generalId: 'huaxiong' }, { name: '洛阳城', generalId: 'zhangliao' }, { name: '滑州津', generalId: 'dianwei' }]);
       const passes = (cfg.passes && cfg.passes.length) ? cfg.passes : defPasses;
-      const soldierTag = mode === 'xian' ? '护道天兵' : (mode === 'mo' ? '炼狱魔卒' : '');
+      const soldierTag = mode === 'xian' ? '护道天兵' : (mode === 'mo' ? '炼狱魔卒' : (mode === 'bazhen' ? '八阵奇兵' : ''));
       passes.forEach((p, i) => {
         const list = soldiers(4 + Math.ceil(i / 2), i === 0 ? 760 : WORLD_W - 150, lv + i, soldierTag);
         const g = makeEnemyGeneral(nextUid(), p.generalId, lv + i * 2, i === 0 ? 980 : WORLD_W - 90, 280, (1.55 + i * 0.28) * diff.hpMult, (1.15 + i * 0.10) * diff.atkMult, true, diff.defMult, initRage);
@@ -850,7 +1030,7 @@
     if (!sp) return 0;
     if (sp.type === 'tomb' || sp.type === 'treasury') return sp.lootTotal - battle.units.filter((u) => u.isLoot && u.alive).length;
     if (sp.type === 'defend') return battle.status === 'victory' && battle.baseAlive !== false ? battle.totalRounds : Math.max(0, battle.round - 1);
-    if (sp.type === 'pass' || sp.type === 'xian' || sp.type === 'mo') return battle.passCleared || 0;
+    if (sp.type === 'pass' || sp.type === 'xian' || sp.type === 'mo' || sp.type === 'beast_xian' || sp.type === 'beast_mo' || sp.type === 'bazhen') return battle.passCleared || 0;
     if (sp.type === 'escort') { const p = battle.cartHpPct || 0; return p >= 0.8 ? 3 : (p >= 0.4 ? 2 : 1); }
     return 1;
   }
@@ -911,12 +1091,12 @@
     }
   }
 
-  // 轮数与副将数量由后台「战斗轮次」配置按章节决定
+  // 轮数与副将数量由后台「战斗轮次」配置按章节决定；神兽挑战固定单轮直接迎战巨型神兽
   function getRoundPlan(mode, level) {
     const w = App.Config.WAVES || {};
     if (level && level.special) return { rounds: 1, subGenerals: 0 }; // 特殊副本自己安排波次
     if (level && level.raid) return { rounds: 1, subGenerals: 0 }; // 共享血量 BOSS 开场即登场
-    if (mode === 'beast') return { rounds: w.dungeonRounds || 6, subGenerals: 2 };
+    if (mode === 'beast') return { rounds: 1, subGenerals: 0 };
     if (mode === 'demon') return { rounds: w.demonRounds || 4, subGenerals: 0 };
     if (mode === 'tower') return { rounds: (level.enemyGenerals || []).length ? 4 : 3, subGenerals: 4 };
     const ch = (level && level.chapter) || 1;
@@ -924,18 +1104,94 @@
     return { rounds: Math.max(1, tier.rounds || 3), subGenerals: tier.subGenerals || 0 };
   }
 
-  /** 统一聚合多源暂停标记（手动暂停 / 撤退确认框 / 局内设置窗 / 激励广告），互不覆盖冲突 */
+  /** 统一聚合多源暂停标记（手动暂停 / 撤退确认框 / 局内设置窗 / 激励广告 / 八阵图奇策选择），互不覆盖冲突 */
   function syncPaused(battle) {
     if (!battle) return false;
-    battle.paused = !!(battle.userPaused || battle.adPaused || battle.settingsPaused || battle.retreatConfirmOpen);
+    const stratChoosing = !!(battle.pendingStratagems && battle.pendingStratagems.length);
+    battle.paused = !!(battle.userPaused || battle.adPaused || battle.settingsPaused || battle.retreatConfirmOpen || stratChoosing);
     return battle.paused;
+  }
+
+  function offerBazhenStratagems(battle) {
+    if (!battle || battle.mode !== 'bazhen' || battle.status !== 'fighting') return false;
+    const pool = (battle.special && battle.special.cfg && battle.special.cfg.stratagems) || [];
+    if (!pool.length) return false;
+    const pickedIds = new Set((battle.chosenStratagems || []).map((s) => s.id));
+    const fresh = pool.filter((s) => !pickedIds.has(s.id));
+    const src = (fresh.length >= 3 ? fresh : pool).slice();
+    const choices = [];
+    while (choices.length < 3 && src.length > 0) {
+      const idx = Math.floor(Math.random() * src.length);
+      choices.push(src.splice(idx, 1)[0]);
+    }
+    battle.pendingStratagems = choices;
+    syncPaused(battle);
+    return true;
+  }
+
+  function applyBazhenGateStartBonuses(battle) {
+    const mods = battle && battle.bazhenMods;
+    if (!mods) return;
+    battle.units.forEach((u) => {
+      if (!u.alive || u.side !== 'player' || u.isProp) return;
+      if (mods.startShieldPct > 0) {
+        const sh = Math.round(u.maxHp * mods.startShieldPct);
+        u.shieldHp = Math.max(u.shieldHp || 0, sh);
+        u.shieldTimer = Math.max(u.shieldTimer || 0, 14.0);
+      }
+      if (mods.startRage > 0 && u.kind === 'general') {
+        u.rage = Math.min(100, (u.rage || 0) + mods.startRage);
+      }
+    });
+  }
+
+  function pickBazhenStratagem(battle, stratId) {
+    if (!battle || !battle.pendingStratagems) return false;
+    const pick = battle.pendingStratagems.find((s) => s.id === stratId) || battle.pendingStratagems[0];
+    if (!pick) return false;
+    battle.pendingStratagems = null;
+    battle.chosenStratagems = battle.chosenStratagems || [];
+    battle.chosenStratagems.push(pick);
+    const m = battle.bazhenMods || (battle.bazhenMods = {});
+    const addMod = (k) => { if (pick[k]) m[k] = (m[k] || 0) + pick[k]; };
+    ['burnOnHit', 'fireMult', 'startShieldPct', 'dmgReduce', 'skillChainLightning', 'rageRefund', 'skillDmgPct',
+      'atkPct', 'crit', 'critDmg', 'lifesteal', 'spdPct', 'startRage', 'resourceMult', 'soldierStatPct',
+      'executeBonus', 'killRage', 'beastRageMult', 'beastPowerMult'].forEach(addMod);
+
+    battle.units.forEach((u) => {
+      if (!u.alive || u.side !== 'player' || u.isProp) return;
+      if (pick.atkPct) u.atk = Math.round(u.atk * (1 + pick.atkPct));
+      if (pick.crit) u.crit = (u.crit || 0) + pick.crit;
+      if (pick.critDmg) u.critDmg = (u.critDmg || 0) + pick.critDmg;
+      if (pick.lifesteal) u.lifesteal = (u.lifesteal || 0) + pick.lifesteal;
+      if (pick.dmgReduce) u.dmgReduce = Math.min(0.68, (u.dmgReduce || 0) + pick.dmgReduce);
+      if (pick.spdPct) u.spdPct = (u.spdPct || 0) + pick.spdPct;
+      if (pick.skillDmgPct) u.skillDmgPct = (u.skillDmgPct || 0) + pick.skillDmgPct;
+      if (pick.instantHealPct && u.kind !== 'soldier') {
+        const h = Math.round(u.maxHp * pick.instantHealPct);
+        u.hp = Math.min(u.maxHp, u.hp + h);
+        addFloatText(battle, u.x, u.y - 60, `奇策+${h}`, '#4ade80', true);
+      }
+      if (pick.startShieldPct) {
+        const sh = Math.round(u.maxHp * pick.startShieldPct);
+        u.shieldHp = Math.max(u.shieldHp || 0, sh);
+        u.shieldTimer = Math.max(u.shieldTimer || 0, 14.0);
+      }
+      if (pick.startRage && u.kind === 'general') {
+        u.rage = Math.min(100, (u.rage || 0) + pick.startRage);
+      }
+    });
+    syncPaused(battle);
+    if (App.Audio) App.Audio.playSfx('upgrade');
+    showBanner(battle, `奇策入阵 · 【${pick.name}】`, pick.desc, pick.color || '#fde047');
+    return true;
   }
 
   /** 进入下一轮（倒计时结束或玩家点「嘲讽」） */
   function nextRound(battle) {
     if (syncPaused(battle) || battle.status !== 'fighting' || battle.round >= battle.totalRounds) return false;
     battle.round += 1;
-    if (battle.special && (battle.special.type === 'pass' || battle.special.type === 'xian' || battle.special.type === 'mo')) {
+    if (battle.special && (battle.special.type === 'pass' || battle.special.type === 'xian' || battle.special.type === 'mo' || battle.special.type === 'beast_xian' || battle.special.type === 'beast_mo' || battle.special.type === 'bazhen')) {
       battle.passCleared = battle.round - 1;
       const pct = battle.special.cfg.healPct || 0.25;
       battle.units.forEach((u) => { if (u.alive && u.side === 'player' && u.kind !== 'soldier') u.hp = Math.min(u.maxHp, u.hp + Math.round(u.maxHp * pct)); });
@@ -943,18 +1199,35 @@
     battle.roundWaiting = false;
     battle.roundCountdown = 0;
     (battle.roundQueue.shift() || []).forEach((u) => battle.units.push(u));
+    if (battle.mode === 'bazhen') {
+      applyBazhenGateStartBonuses(battle);
+      offerBazhenStratagems(battle);
+    }
     const last = battle.round >= battle.totalRounds;
-    showBanner(battle, last ? '最终轮 · 守将亲征' : `第 ${battle.round} / ${battle.totalRounds} 轮`, last ? '击破守将即可攻克此关！' : '敌军援兵杀到！', last ? '#f87171' : '#fde047');
+    const isBeastPass = battle.mode === 'beast_xian' || battle.mode === 'beast_mo';
+    showBanner(
+      battle,
+      last ? (isBeastPass ? '最终重 · 至尊神魔圣兽降临' : '最终轮 · 守将亲征') : `第 ${battle.round} / ${battle.totalRounds} 轮`,
+      last ? (isBeastPass ? '镇伏护坛圣兽即可证道通关！' : '击破守将即可攻克此关！') : (isBeastPass ? '下一重镇守圣兽现身！' : '敌军援兵杀到！'),
+      last ? '#f87171' : '#fde047'
+    );
     if (App.Audio) App.Audio.playSfx('battle_start');
     return true;
   }
 
-  function makeSoldier(uid, side, card, x, y, lv, statMult) {
-    // 我方小兵额外享受「兵种演武营」的等级加成；敌方小兵享受后台难度倍率
-    const campLv = side === 'player' ? ((App.State.get().troopLevels || {})[card.id] || 0) : 0;
-    const sc = (1 + (lv - 1) * 0.14) * (1 + campLv * ((App.Config.TROOP_CAMP || {}).statPerLevel || 0));
+  function makeSoldier(uid, side, card, x, y, lv, statMult, battleRef) {
+    // 我方小兵额外享受「兵种演武营」等级加成 + 阵营全队攻击/攻速加成 + 八阵图奇策加成；敌方小兵享受后台难度倍率
+    const st = App.State.get();
+    const campLv = side === 'player' ? ((st.troopLevels || {})[card.id] || 0) : 0;
+    const pFac = side === 'player' ? (App.Config.FACTIONS[st.factionId] || {}) : null;
+    const facAtkMult = pFac ? (pFac.atkMult || 1) : 1;
+    const facSpdPct = (pFac && pFac.atkSpeedMult && pFac.atkSpeedMult > 1) ? (pFac.atkSpeedMult - 1) : 0;
+    const bzSoldierMult = (side === 'player' && battleRef && battleRef.bazhenMods && battleRef.bazhenMods.soldierStatPct)
+      ? (1 + battleRef.bazhenMods.soldierStatPct)
+      : 1;
+    const sc = (1 + (lv - 1) * 0.14) * (1 + campLv * ((App.Config.TROOP_CAMP || {}).statPerLevel || 0)) * bzSoldierMult;
     const mHp = statMult && statMult.hpMult ? statMult.hpMult : 1;
-    const mAtk = statMult && statMult.atkMult ? statMult.atkMult : 1;
+    const mAtk = (statMult && statMult.atkMult ? statMult.atkMult : 1) * facAtkMult;
     const mDef = statMult && statMult.defMult ? statMult.defMult : 1;
     const u = {
       uid, side, facing: side === 'player' ? 1 : -1,
@@ -963,7 +1236,7 @@
       x, y,
       maxHp: Math.round(card.hp * sc * mHp), hp: Math.round(card.hp * sc * mHp),
       atk: Math.round(card.atk * sc * mAtk), def: Math.round(card.def * sc * mDef),
-      crit: 0.07, spd: (card.id === 'cavalry' && (!card.spd || card.spd === 128)) ? 88 : card.spd, range: card.range, rage: 0,
+      crit: 0.07, spdPct: facSpdPct, spd: (card.id === 'cavalry' && (!card.spd || card.spd === 128)) ? 88 : card.spd, range: card.range, rage: 0,
       atkTimer: 0.45 + Math.random() * 0.35, attackAnim: 0, runPhase: Math.random() * 6,
       stunTimer: 0, hitFlash: 0, moving: false, alive: true,
     };
@@ -1048,7 +1321,7 @@
     const y = LANE_MIN_Y + Math.random() * (LANE_MAX_Y - LANE_MIN_Y);
     // ★ 从中军帅帐正前方辕门列队出兵（x >= 322，完全位于主营战鼓前侧，绝不被帅帐遮挡！）
     const spawnX = getPlayerCampFrontX(battle) + 6 + ((battle.uidCounter || 0) % 3) * 10;
-    battle.units.push(makeSoldier(battle.uidCounter++, 'player', card, spawnX, y, avgLv));
+    battle.units.push(makeSoldier(battle.uidCounter++, 'player', card, spawnX, y, avgLv, null, battle));
     return true;
   }
 
@@ -1180,6 +1453,35 @@
     const effDef = (target.def || 15) * defMult;
 
     let dmg = Math.max(15, effAtk * mult * disDmgMult - effDef * 0.42);
+    // 1. 兵种三角克制（步枪克铁骑 · 铁骑克弓谋 · 弓谋克步枪）
+    let isCounterHit = false;
+    const atkCat = normalizeUnitTriangleCat(attacker);
+    const defCat = normalizeUnitTriangleCat(target);
+    if (atkCat && defCat && App.Config.UNIT_TYPES && App.Config.UNIT_TYPES[atkCat] && App.Config.UNIT_TYPES[atkCat].counters === defCat) {
+      dmg *= (App.Config.PARAMS.unitCounterMult || 1.20);
+      isCounterHit = true;
+    }
+    // 2. 曹魏阵营残血增伤（lowHpBonus） + 白虎契约斩杀残血加成 + 八阵图斩将奇策
+    const hpRatio = target.hp / Math.max(1, target.maxHp);
+    const atkFac = getSideFaction(battle, attacker.side);
+    if (atkFac && atkFac.lowHpBonus > 0 && hpRatio <= 0.45) {
+      dmg *= (1 + atkFac.lowHpBonus);
+    }
+    if (attacker.boundBeastCfg && attacker.boundBeastCfg.bondExecuteBonus > 0 && hpRatio <= 0.50) {
+      dmg *= (1 + attacker.boundBeastCfg.bondExecuteBonus);
+    }
+    if (attacker.side === 'player' && battle.bazhenMods && battle.bazhenMods.executeBonus > 0 && hpRatio <= 0.50) {
+      dmg *= (1 + battle.bazhenMods.executeBonus);
+    }
+    // 3. 东吴阵营烈火水师加成（fireBonus）
+    if (o.isFire) {
+      dmg *= getSideFireMult(battle, attacker.side);
+    }
+    // 4. 八阵图借东风奇策普攻引燃灼烧
+    if (!o.fromDot && attacker.side === 'player' && battle.bazhenMods && battle.bazhenMods.burnOnHit > 0 && !target.isProp) {
+      target.burnDps = Math.max(target.burnDps || 0, Math.round(effAtk * battle.bazhenMods.burnOnHit * getSideFireMult(battle, 'player')));
+      target.burnTimer = Math.max(target.burnTimer || 0, 4.0);
+    }
     const effCritRate = (attacker.crit || 0.1) + ((attacker.critBuffTimer > 0 && attacker.critBuffPct) ? attacker.critBuffPct : 0);
     const isCrit = !!o.forceCrit || Math.random() < effCritRate;
     if (isCrit) dmg *= (1.5 + (attacker.critDmg || 0) + (o.bonusCritDmg || 0));
@@ -1222,6 +1524,9 @@
     }
 
     if (target.isRaidBoss && hpDmg > 0) battle.raidDamage = (battle.raidDamage || 0) + Math.min(hpDmg, target.hp);
+    const realHpLoss = Math.min(target.hp, hpDmg);
+    recordStat(battle, attacker, 'dmgDealt', dmg);
+    recordStat(battle, target, 'dmgTaken', dmg);
 
     target.hp = Math.max(0, target.hp - hpDmg);
     target.hitFlash = 0.16;
@@ -1253,8 +1558,10 @@
       const beastGlow = isBeastAtk && attacker.beastCfg ? attacker.beastCfg.glow : null;
       const baseCol = wVfx ? wVfx.color : (isCrit ? '#facc15' : (beastGlow || (wEq ? (wEq.glowColor || '#38bdf8') : (attacker.side === 'player' ? '#fef08a' : '#fca5a5'))));
       const midX = (attacker.x + target.x) * 0.5 + hitDir * 6;
-      const midY = (attacker.y + target.y) * 0.5 - (target.kind === 'beast' ? 44 : (target.isMounted ? 36 : 25));
-      const hitY2 = target.y - (target.kind === 'beast' ? 44 : (target.isMounted ? 36 : 25));
+      const targetBodyH = target.kind === 'beast' ? Math.round(44 * (target.scale || 1)) : (target.isMounted ? 36 : 25);
+      const atkScale = isBeastAtk ? (attacker.scale || 1) : 1;
+      const midY = (attacker.y + target.y) * 0.5 - targetBodyH;
+      const hitY2 = target.y - targetBodyH;
       const wScaleMult = wVfx ? (wVfx.scaleMult || 1.15) : 1.0;
       battle.projectiles.push({
         kind: isBeastAtk ? 'beast_strike' : (style === 'thrust' ? 'thrust' : 'slash'),
@@ -1266,13 +1573,13 @@
         vfxTex1: wVfx ? wVfx.tex1 : null,
         vfxTex2: wVfx ? wVfx.tex2 : null,
         coreColor: wVfx ? wVfx.coreColor : '#ffffff',
-        x1: attacker.x + hitDir * (isBeastAtk ? 24 : 14),
-        y1: attacker.y - (isBeastAtk ? 46 : (attacker.isMounted ? 38 : 25)),
+        x1: attacker.x + hitDir * Math.round(isBeastAtk ? 24 * atkScale : 14),
+        y1: attacker.y - Math.round(isBeastAtk ? 46 * atkScale : (attacker.isMounted ? 38 : 25)),
         x2: target.x,
         y2: hitY2,
         dir: hitDir,
         isCrit,
-        scale: (attacker.kind === 'general' ? 1.32 : (isBeastAtk ? 1.58 : 0.96)) * wScaleMult * (isCrit ? 1.16 : 1),
+        scale: (attacker.kind === 'general' ? 1.32 : (isBeastAtk ? (attacker.id === 'zhulong' ? 1.88 : 1.58) * Math.min(1.35, atkScale) : 0.96)) * wScaleMult * (isCrit ? 1.16 : 1),
         color: baseCol,
         life: isBeastAtk ? 0.32 : (wVfx ? 0.32 : 0.25),
         maxLife: isBeastAtk ? 0.32 : (wVfx ? 0.32 : 0.25),
@@ -1309,12 +1616,14 @@
       spawnSparks(battle, target.x, target.y - 28, o.sparkColor || (isCrit ? '#fde047' : '#bae6fd'), isCrit ? 9 : 5);
     }
 
-    addFloatText(battle, target.x, target.y - 54, (isCrit ? '暴击 ' : '') + '-' + dmg, isCrit ? '#fde047' : '#ffffff', isCrit);
+    const hitPrefix = isCrit ? '暴击 ' : ((isCounterHit && attacker.kind === 'general' && Math.random() < 0.35) ? '克制 ' : '');
+    addFloatText(battle, target.x, target.y - 54, hitPrefix + '-' + dmg, isCrit ? '#fde047' : (hitPrefix ? '#67e8f9' : '#ffffff'), isCrit);
 
     const effLifesteal = (attacker.lifesteal || 0) + ((attacker.lifestealBuffTimer > 0 && attacker.lifestealBuffPct) ? attacker.lifestealBuffPct : 0);
     if (attacker.alive && effLifesteal > 0 && dmg > 0 && attacker.hp < attacker.maxHp) {
-      const vamp = Math.max(1, Math.round(dmg * effLifesteal));
+      const vamp = Math.max(1, Math.round(dmg * effLifesteal * getSideHealMult(battle, attacker.side)));
       attacker.hp = Math.min(attacker.maxHp, attacker.hp + vamp);
+      recordStat(battle, attacker, 'healDone', vamp);
       if (vamp >= 18 && Math.random() < 0.45) addFloatText(battle, attacker.x, attacker.y - 58, `吸血+${vamp}`, '#4ade80');
     }
 
@@ -1343,7 +1652,10 @@
     if (target.hp <= 0) {
       target.alive = false;
       spreadVenomOnDeath(battle, target);
-      if (attacker.rage !== undefined) attacker.rage = Math.min(100, attacker.rage + 6);
+      if (attacker.rage !== undefined) {
+        const extraKillRage = (attacker.side === 'player' && battle.bazhenMods && battle.bazhenMods.killRage) ? battle.bazhenMods.killRage : 0;
+        attacker.rage = Math.min(100, attacker.rage + 6 + extraKillRage);
+      }
       if (target.kind) {
         battle.dyingUnits.push(Object.assign({}, target, { dieTimer: 0.55, maxDie: 0.55 }));
       }
@@ -1425,7 +1737,7 @@
     const startX = isTower ? attacker.x + facing * 12 : attacker.x + facing * (attacker.isMounted ? 22 : 15);
     const startY = isTower ? attacker.y - 66 : attacker.y - (attacker.isMounted ? 48 : 29);
     const endX = target.x;
-    const endY = target.y - (target.kind === 'beast' ? 46 : (target.isMounted ? 36 : 24));
+    const endY = target.y - (target.kind === 'beast' ? Math.round(46 * (target.scale || 1)) : (target.isMounted ? 36 : 24));
     const dist = Math.hypot(endX - startX, endY - startY);
 
     const isFan = pKind === 'fan_wave' || pKind === 'gen_fan';
@@ -1642,15 +1954,20 @@
       if (cleansedCnt > 0) addFloatText(battle, caster.x, caster.y - 84, '✦全军净化!', '#a7f3d0', true);
     }
 
-    // ★ 群体一次性爆发治疗（含残血急救暴涨 + 剧毒重伤减疗判定 + 医圣溢出转护盾！）
+    // ★ 群体一次性爆发治疗（含季汉阵营治疗+20% + 残血急救暴涨 + 剧毒重伤减疗判定 + 医圣溢出转护盾！巨型魔将按比例折算防止无限回满）
+    const sideHealMult = getSideHealMult(battle, caster.side);
+    const bossSelfSustScale = (u) => (u.isRaidBoss ? 0 : ((battle.mode === 'demon' && u.isBoss) ? 0.25 : 1));
     const teamHealPct = mech.healPct || mech.teamHealPct || (cfg.skillType === 'heal_burn' && !mech.kind ? 0.25 : 0);
     if (teamHealPct > 0) {
       allies.forEach((a) => {
+        const bScale = bossSelfSustScale(a);
+        if (bScale <= 0) return;
         const lowHpMult = (mech.lowHpHealBonus && (a.hp / Math.max(1, a.maxHp)) <= 0.45) ? (1 + mech.lowHpHealBonus) : 1;
         const poisonCut = a.poisonTimer > 0 ? (1 - (a.healCutPct || 0.45)) : 1;
-        const rawHeal = Math.max(1, Math.round((a.maxHp * teamHealPct + caster.atk * 0.45) * lowHpMult * plagueMult * poisonCut));
+        const rawHeal = Math.max(1, Math.round((a.maxHp * teamHealPct * bScale + caster.atk * 0.45) * lowHpMult * plagueMult * poisonCut * sideHealMult));
         const overheal = Math.max(0, (a.hp + rawHeal) - a.maxHp);
         a.hp = Math.min(a.maxHp, a.hp + rawHeal);
+        recordStat(battle, caster, 'healDone', rawHeal - overheal);
         if (mech.overhealShield && overheal > 10) {
           a.shieldHp = Math.max(a.shieldHp || 0, Math.round(overheal * 0.65));
           a.shieldTimer = Math.max(a.shieldTimer || 0, buffSec);
@@ -1664,38 +1981,51 @@
 
     const selfHealPct = mech.selfHealPct || (cfg.skillType === 'lifesteal_cleave' && !mech.kind ? 0.22 : 0);
     if (selfHealPct > 0) {
-      const poisonCut = caster.poisonTimer > 0 ? (1 - (caster.healCutPct || 0.45)) : 1;
-      const heal = Math.max(1, Math.round(caster.maxHp * selfHealPct * plagueMult * poisonCut));
-      caster.hp = Math.min(caster.maxHp, caster.hp + heal);
-      addFloatText(battle, caster.x, caster.y - 62, `回血+${heal}`, '#4ade80', true);
+      const bScale = bossSelfSustScale(caster);
+      if (bScale > 0) {
+        const poisonCut = caster.poisonTimer > 0 ? (1 - (caster.healCutPct || 0.45)) : 1;
+        const heal = Math.max(1, Math.round(caster.maxHp * selfHealPct * bScale * plagueMult * poisonCut * sideHealMult));
+        const before = caster.hp;
+        caster.hp = Math.min(caster.maxHp, caster.hp + heal);
+        recordStat(battle, caster, 'healDone', caster.hp - before);
+        addFloatText(battle, caster.x, caster.y - 62, `回血+${heal}`, '#4ade80', true);
+      }
     }
     if (mech.teamShieldPct) {
       allies.forEach((a) => {
-        const sh = Math.round(a.maxHp * mech.teamShieldPct);
+        const shScale = a.isRaidBoss ? 0 : ((battle.mode === 'demon' && a.isBoss) ? 0.25 : 1);
+        if (shScale <= 0) return;
+        const sh = Math.round(a.maxHp * mech.teamShieldPct * shScale);
         a.shieldHp = Math.max(a.shieldHp || 0, sh);
         a.shieldTimer = Math.max(a.shieldTimer || 0, buffSec);
       });
-      addFloatText(battle, caster.x, caster.y - 78, '🛡全军护盾!', '#67e8f9', true);
+      if (!caster.isRaidBoss) addFloatText(battle, caster.x, caster.y - 78, '🛡全军护盾!', '#67e8f9', true);
     }
-    if (mech.selfShieldPct) {
-      const sh = Math.round(caster.maxHp * mech.selfShieldPct);
+    if (mech.selfShieldPct && !caster.isRaidBoss) {
+      const shScale = (battle.mode === 'demon' && caster.isBoss) ? 0.25 : 1;
+      const sh = Math.round(caster.maxHp * mech.selfShieldPct * shScale);
       caster.shieldHp = Math.max(caster.shieldHp || 0, sh);
       caster.shieldTimer = Math.max(caster.shieldTimer || 0, buffSec);
       addFloatText(battle, caster.x, caster.y - 78, `护盾+${sh}`, '#67e8f9', true);
     }
 
-    // ★ 逐渐持续治疗 (HoT)：按秒持续润脉回血！
-    if (mech.selfHotPct) {
-      caster.hotDps = Math.max(12, Math.round((caster.maxHp * mech.selfHotPct + caster.atk * 0.55) / buffSec));
+    // ★ 逐渐持续治疗 (HoT)：按秒持续润脉回血（享受季汉治疗+20%）！
+    if (mech.selfHotPct && bossSelfSustScale(caster) > 0) {
+      const bScale = bossSelfSustScale(caster);
+      caster.hotDps = Math.max(12, Math.round(((caster.maxHp * mech.selfHotPct * bScale + caster.atk * 0.55) * sideHealMult) / buffSec));
+      caster.hotSource = caster;
       caster.hotTimer = buffSec;
       addFloatText(battle, caster.x, caster.y - 72, '✚持续生肌!', '#86efac', true);
     }
     if (mech.teamHotPct) {
       allies.forEach((a) => {
-        a.hotDps = Math.max(10, Math.round((a.maxHp * mech.teamHotPct + caster.atk * 0.55) / buffSec));
+        const bScale = bossSelfSustScale(a);
+        if (bScale <= 0) return;
+        a.hotDps = Math.max(10, Math.round(((a.maxHp * mech.teamHotPct * bScale + caster.atk * 0.55) * sideHealMult) / buffSec));
+        a.hotSource = caster;
         a.hotTimer = buffSec;
       });
-      addFloatText(battle, vfxX, 218, '✚全军持续回春!', '#86efac', true);
+      if (!caster.isRaidBoss) addFloatText(battle, vfxX, 218, '✚全军持续回春!', '#86efac', true);
     }
 
     if (mech.teamAtkBuff) allies.forEach((a) => { a.atkBuffPct = Math.max(a.atkBuffPct || 0, mech.teamAtkBuff); a.atkBuffTimer = Math.max(a.atkBuffTimer || 0, buffSec); });
@@ -1724,6 +2054,20 @@
     if (mech.selfRageRefund) {
       caster.rage = Math.min(100, (caster.rage || 0) + mech.selfRageRefund);
     }
+    if (caster.side === 'player' && battle.bazhenMods) {
+      if (battle.bazhenMods.rageRefund > 0) {
+        caster.rage = Math.min(100, (caster.rage || 0) + battle.bazhenMods.rageRefund);
+        addFloatText(battle, caster.x, caster.y - 76, `锦囊返怒+${battle.bazhenMods.rageRefund}`, '#fde047');
+      }
+      if (battle.bazhenMods.skillChainLightning > 0 && enemies.length > 0) {
+        const boltTargets = enemies.filter((e) => !e.isMainBase).slice(0, 3);
+        boltTargets.forEach((bt) => {
+          spawnSparks(battle, bt.x, bt.y - 36, '#c084fc', 10);
+          dealDamage(battle, caster, bt, battle.bazhenMods.skillChainLightning, { fromSkill: true, sparkColor: '#c084fc' });
+          addFloatText(battle, bt.x, bt.y - 80, '⚡奇策落雷!', '#e9d5ff');
+        });
+      }
+    }
 
     // 貂蝉专属【闭月倾城魅惑】：优先锁定敌方攻击力最高的主将强控并夺取怒气
     if (mech.charmStrongestSec) {
@@ -1740,8 +2084,8 @@
       }
     }
 
-    // 召唤系名将专属亲卫登场（共享血量世界/联盟 BOSS 纯将战模式下不出小兵）
-    if (!battle.noTroops && mech.summonTroop && mech.summonCount > 0 && TROOP_CARDS && TROOP_CARDS.length > 0) {
+    // 召唤系名将专属亲卫登场（共享血量世界/联盟 BOSS 纯将战模式下不出小兵；神兽挑战敌方不出小兵）
+    if (!battle.noTroops && !(battle.mode === 'beast' && caster.side === 'enemy') && mech.summonTroop && mech.summonCount > 0 && TROOP_CARDS && TROOP_CARDS.length > 0) {
       const sCard = TROOP_CARDS.find((c) => c.id === mech.summonTroop) || TROOP_CARDS[0];
       const stLv = caster.side === 'player'
         ? Math.max(1, (App.State && App.State.get ? App.State.get().lordLevel : 1) || 1)
@@ -1794,8 +2138,10 @@
           e.healCutPct = Math.max(e.healCutPct || 0, mech.healCutPct || 0.45);
         }
 
+        const isFireSkill = cfg.skillElement === 'fire' || cfg.skillType === 'fire_aoe';
         const dmgOpts = {
           fromSkill: true,
+          isFire: isFireSkill,
           sparkColor: skillSparkCol,
           forceCrit: !!mech.guaranteedCrit,
           bonusCritDmg: mech.bonusCritDmg || 0,
@@ -1849,9 +2195,11 @@
           e.chainLinkTimer = Math.max(e.chainLinkTimer || 0, debuffSec);
           addFloatText(battle, e.x, e.y - 70, '⛓连环', '#fb923c');
         }
-        if (mech.burnDpsPct && !e.isProp) {
-          e.burnDps = Math.max(e.burnDps || 0, Math.round(caster.atk * mech.burnDpsPct));
-          e.burnTimer = Math.max(e.burnTimer || 0, debuffSec);
+        const burnScale = (mech.burnDpsPct || 0) + ((caster.boundBeastCfg && caster.boundBeastCfg.bondFireBurn) || 0);
+        if (burnScale > 0 && !e.isProp) {
+          const fireMult = getSideFireMult(battle, caster.side);
+          e.burnDps = Math.max(e.burnDps || 0, Math.round(caster.atk * burnScale * fireMult));
+          e.burnTimer = Math.max(e.burnTimer || 0, mech.burnDpsPct ? debuffSec : 4.0);
           if (e.kind === 'general') addFloatText(battle, e.x, e.y - 72, '🔥灼烧!', '#fb923c');
         }
         if (mech.bleedDpsPct && !e.isProp) {
@@ -1918,7 +2266,10 @@
       maxLife: 1.90,
     });
 
-    const bSkillMult = 1 + (beastUnit.skillDmgPct || 0);
+    const bzBeastMult = (beastUnit.side === 'player' && battle.bazhenMods && battle.bazhenMods.beastPowerMult)
+      ? (1 + battle.bazhenMods.beastPowerMult)
+      : 1.0;
+    const bSkillMult = (1 + (beastUnit.skillDmgPct || 0)) * bzBeastMult;
     const dmgMultMap = {
       baihu: 2.15, taotie: 2.05, qiongqi: 2.20, taowu: 1.95, hundun: 2.10,
       qilin: 2.15, baize: 2.20, kunpeng: 2.32, zhulong: 2.55,
@@ -1926,15 +2277,16 @@
     const stunMap = { qinglong: 1.6, xuanwu: 2.1, taowu: 2.3, hundun: 1.8, baize: 2.2, zhulong: 2.6 };
     const hitMult = (dmgMultMap[beastUnit.id] || 1.70) * bSkillMult;
     const stunDur = stunMap[beastUnit.id] || 0;
+    const isFireBeast = elemMap[beastUnit.id] === 'fire';
 
     targets.slice(0, 8).forEach((t) => {
-      dealDamage(battle, beastUnit, t, hitMult, { fromSkill: true, sparkColor: bCfg.glow || '#fde047' });
+      dealDamage(battle, beastUnit, t, hitMult, { fromSkill: true, isFire: isFireBeast, sparkColor: bCfg.glow || '#fde047' });
       if (t.alive && stunDur > 0) {
         t.stunTimer = Math.max(t.stunTimer, stunDur);
       }
     });
     enemyTowers.forEach((tw) => {
-      dealDamage(battle, beastUnit, tw, 1.45 * bSkillMult, { fromSkill: true, sparkColor: bCfg.glow || '#fde047' });
+      dealDamage(battle, beastUnit, tw, 1.45 * bSkillMult, { fromSkill: true, isFire: isFireBeast, sparkColor: bCfg.glow || '#fde047' });
     });
 
     const allies = battle.units.filter((a) => a.alive && a.side === beastUnit.side && !a.isMainBase);
@@ -1944,15 +2296,17 @@
     const rageGrantMap = { hundun: 25, baize: 30 };
 
     if (healPctMap[beastUnit.id]) {
-      const hpct = healPctMap[beastUnit.id];
+      const hpct = healPctMap[beastUnit.id] * bzBeastMult * getSideHealMult(battle, beastUnit.side);
       allies.forEach((a) => {
         const h = Math.round(a.maxHp * hpct);
+        const before = a.hp;
         a.hp = Math.min(a.maxHp, a.hp + h);
+        recordStat(battle, beastUnit, 'healDone', a.hp - before);
         addFloatText(battle, a.x, a.y - 52, `+${h}`, '#4ade80');
       });
     }
     if (shieldPctMap[beastUnit.id]) {
-      const spct = shieldPctMap[beastUnit.id];
+      const spct = shieldPctMap[beastUnit.id] * bzBeastMult;
       allies.forEach((a) => {
         const sh = Math.round(a.maxHp * spct);
         a.shieldHp = Math.max(a.shieldHp || 0, sh);
@@ -1991,10 +2345,11 @@
     }
     return App.State.recruit(battle.serverId, isAdDouble).then((res) => {
       if (!res.ok) return res;
+      const adsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
       battle.recruitTries = (battle.recruitTries || 0) + 1;
       if (res.success) {
         battle.recruitState = 'success';
-      } else if (isAdDouble || battle.recruitTries >= 2) {
+      } else if (isAdDouble || !adsOn || battle.recruitTries >= 2) {
         battle.recruitState = 'exhausted';
       } else {
         battle.recruitState = 'failed';
@@ -2016,10 +2371,12 @@
     }
     return App.State.catchBeast(battle.serverId, useGoldRope).then((res) => {
       if (!res.ok) return res;
+      const adsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
+      const hasGoldRope = ((App.State.get().goldRopes || 0) > 0);
       battle.catchTries = (battle.catchTries || 0) + 1;
       if (res.success) {
         battle.catchState = 'success';
-      } else if (useGoldRope || battle.catchTries >= 2) {
+      } else if (useGoldRope || battle.catchTries >= 2 || (!adsOn && !hasGoldRope)) {
         battle.catchState = 'exhausted';
       } else {
         battle.catchState = 'failed';
@@ -2058,7 +2415,7 @@
       battle.forceEnd = 'lose';
     }
     // 我方出战武将全部战死即对局失败；或我方主营被攻破 / 机动兵将全灭判负
-    const isPassMode = sp && (sp.type === 'pass' || sp.type === 'xian' || sp.type === 'mo');
+    const isPassMode = sp && (sp.type === 'pass' || sp.type === 'xian' || sp.type === 'mo' || sp.type === 'beast_xian' || sp.type === 'beast_mo' || sp.type === 'bazhen');
     const wiped = allPlayerGensDead
       || (playerBaseLost && !(sp && sp.type === 'defend'))
       || (!battle.playerBase && pMobileCount === 0 && !(sp && (sp.type === 'defend' || sp.type === 'escort')))
@@ -2250,6 +2607,10 @@
     }
     if (battle.introTimer > 0) {
       battle.introTimer = Math.max(0, battle.introTimer - activeRaw);
+    } else if (battle.mode === 'bazhen' && !battle._bazhenInitOffered && battle.status === 'fighting') {
+      battle._bazhenInitOffered = true;
+      offerBazhenStratagems(battle);
+      if (syncPaused(battle)) return;
     }
     const aimSlow = battle.aimingUnit ? 0.2 : 1.0;
     const dt = activeRaw * (battle.speedMult * aimSlow);
@@ -2276,7 +2637,7 @@
         p.t += dt / (p.duration || 0.28);
         if (p.target && p.target.alive && p.t < 0.80) {
           p.x2 = p.target.x;
-          p.y2 = p.target.y - (p.target.kind === 'beast' ? 46 : (p.target.isMounted ? 36 : 24));
+          p.y2 = p.target.y - (p.target.kind === 'beast' ? Math.round(46 * (p.target.scale || 1)) : (p.target.isMounted ? 36 : 24));
         }
         const tt = Math.min(1, p.t);
         const cx = p.x1 + (p.x2 - p.x1) * tt;
@@ -2384,8 +2745,9 @@
       battle.resTimer += dt;
       if (battle.resTimer >= 2.0) {
         battle.resTimer -= 2.0;
-        const wt = battle.woodTick || 10;
-        const ft = battle.foodTick || 10;
+        const bzResMult = 1 + ((battle.bazhenMods && battle.bazhenMods.resourceMult) || 0);
+        const wt = Math.round((battle.woodTick || 10) * bzResMult);
+        const ft = Math.round((battle.foodTick || 10) * bzResMult);
         battle.wood = Math.min(999, battle.wood + wt);
         battle.food = Math.min(999, battle.food + ft);
         addFloatText(battle, 56, 118, `+${wt} 木材`, '#fde047');
@@ -2521,7 +2883,7 @@
         battle.roundCountdown = (App.Config.WAVES && App.Config.WAVES.countdownSeconds) || 8;
       }
     }
-    const canSpawnCampWave = !(battle.level && battle.level.raid) && !battle.noTroops && (battle.totalRounds <= 1 || (battle.round >= battle.totalRounds && ((battle.enemyBase && battle.enemyBase.alive) || battle.mode === 'beast')));
+    const canSpawnCampWave = !(battle.level && battle.level.raid) && !battle.noTroops && battle.mode !== 'beast' && (battle.totalRounds <= 1 || (battle.round >= battle.totalRounds && battle.enemyBase && battle.enemyBase.alive));
     if (canSpawnCampWave && !(battle.special && battle.special.noAutoWave) && battle.enemyWaveTimer <= 0 && battle.units.filter((u) => u.alive && u.side === 'enemy' && !u.isMainBase).length < maxEnemyCap) {
       battle.enemyWaveTimer = battle.mode === 'beast'
         ? 5.4
@@ -2601,7 +2963,9 @@
           if (u.hotTimer > 0 && u.hotDps > 0 && u.hp < u.maxHp) {
             const poisonCut = u.poisonTimer > 0 ? (1 - (u.healCutPct || 0.45)) : 1;
             const hAmt = Math.max(1, Math.round(u.hotDps * 0.80 * poisonCut));
+            const before = u.hp;
             u.hp = Math.min(u.maxHp, u.hp + hAmt);
+            if (u.hotSource) recordStat(battle, u.hotSource, 'healDone', u.hp - before);
             if (u.kind === 'general' || u.kind === 'beast' || Math.random() < 0.30) {
               addFloatText(battle, u.x, u.y - 54, `回春+${hAmt}`, '#86efac');
             }
@@ -2637,9 +3001,41 @@
         }
       }
 
-      // ★ 我方出战神兽灵气积满（>=100）时自动主动释放四象神威技能！
+      // ★ 我方名将开启【自动大招】时满怒智能择机施放！
       if (
-        u.side === 'player'
+        battle.autoSkill
+        && u.side === 'player'
+        && u.kind === 'general'
+        && (u.rage || 0) >= 100
+        && battle.status === 'fighting'
+        && battle.introTimer <= 0
+        && (u.stunTimer || 0) <= 0
+        && (u.petrifyTimer || 0) <= 0
+      ) {
+        const cfg = u.cfg || {};
+        const isPureSupport = cfg.skillPower === 0;
+        if (isPureSupport) {
+          const wounded = battle.units.some((a) => a.alive && a.side === 'player' && !a.isProp && a.hp < a.maxHp * 0.85);
+          if (wounded) {
+            triggerPlayerGeneralSkill(battle, u);
+            if (battle.status !== 'fighting') return;
+          }
+        } else {
+          const enemies = battle.units.filter((e) => e.alive && e.side === 'enemy' && (!e.isMainBase || Math.abs(e.x - u.x) <= 320));
+          const focusE = enemies.find((e) => e.kind === 'general' || e.isWildBeast) || enemies[0];
+          const eTw = !focusE ? battle.towers.find((tw) => tw.alive && tw.side === 'enemy' && Math.abs(tw.x - u.x) <= 280) : null;
+          const aimT = focusE || eTw;
+          if (aimT) {
+            executeGeneralSkillAt(battle, u, aimT.x, aimT.y || 288);
+            if (battle.status !== 'fighting') return;
+          }
+        }
+      }
+
+      // ★ 我方出战神兽灵气积满（>=100）时：开启自动御兽则立即释放，手动模式等待玩家点击召唤！
+      if (
+        battle.autoBeast !== false
+        && u.side === 'player'
         && u.kind === 'beast'
         && (u.rage || 0) >= 100
         && battle.status === 'fighting'
@@ -2776,19 +3172,24 @@
         }
       }
 
-      if (u.side === 'player' && (u.kind === 'general' || u.kind === 'beast')) {
+      if (u.side === 'player' && u.kind === 'general') {
         if (battle.order === 'hold') {
           u.x = clampUnitX(battle, u, u.x);
-          u.moving = false; u.facing = 1; return;
+          u.moving = false;
+          u.inCombat = false;
+          u.facing = 1;
+          return;
         }
         if (battle.order === 'retreat') {
-          // ★ 撤退驻防区严格落在【主营正前方、双箭垒后方】（约 x=346..442），依托箭垒火力掩护御敌，绝不退到主营背后！
+          // ★ 仅我方武将响应【武将撤退】（出战神兽与兵卒不会撤退，继续在前线御敌）
+          // 撤退驻防区严格落在【主营正前方、双箭垒后方】（约 x=346..442），依托箭垒火力掩护御敌，绝不退到主营背后！
           const campFrontX = getPlayerCampFrontX(battle);
           const pTower = battle.towers && battle.towers.find((tw) => tw.alive && tw.side === 'player');
           const behindTowerX = pTower ? (pTower.x - 76) : (campFrontX + 96);
-          const slotOff = u.kind === 'beast' ? 44 : (((u.uid || 0) % 4) * 22);
+          const slotOff = ((u.uid || 0) % 4) * 22;
           const rallyX = Math.max(campFrontX + 22, Math.min(behindTowerX, campFrontX + 26 + slotOff));
 
+          u.inCombat = false;
           if (u.x > rallyX + 5) {
             u.x = Math.max(rallyX, u.x - u.spd * 1.35 * dt);
             u.facing = -1;
@@ -2817,7 +3218,13 @@
       const spdBoost = Math.max(0.42, (1 + (u.spdPct || 0) + skillSpdBuff) * slowFactor);
       const effSpd = u.spd * Math.max(0.40, (1 + ((u.spdPct || 0) + skillSpdBuff) * 0.65) * slowFactor) * (pDis ? (pDis.spdMult || 1) : 1);
       const baseRange = u.range > 90 ? u.range * (pDis ? (pDis.rangeMult || 1) : 1) : (u.range + (u.rangeJitter || 0));
-      const effRange = Math.max(38, baseRange);
+      const targetBodyPad = (target.kind === 'beast' && (target.scale || 1) > 1.15)
+        ? Math.round(((target.scale || 1) - 1) * 72)
+        : 0;
+      const selfBodyPad = (u.kind === 'beast' && u.range <= 90 && (u.scale || 1) > 1.15)
+        ? Math.round(((u.scale || 1) - 1) * 26)
+        : 0;
+      const effRange = Math.max(38, baseRange) + targetBodyPad + selfBodyPad;
       const effAtkSpd = (pDis ? (pDis.atkSpdMult || 1) : 1) * spdBoost;
 
       if (dist > effRange && u.atkProg === 0) {
@@ -2836,7 +3243,13 @@
         u.moving = true;
         const prevPhase = u.runPhase;
         const cadence = u.kind === 'beast'
-          ? (u.id === 'baihu' ? 11.2 : (u.id === 'xuanwu' ? 6.8 : 9.6))
+          ? (u.id === 'xuanwu'
+            ? 6.8
+            : ((u.id === 'taotie' || u.id === 'taowu')
+              ? 9.2
+              : (u.id === 'zhulong'
+                ? 8.8
+                : ((u.id === 'qilin' || u.id === 'baize') ? 11.0 : 11.2))))
           : (u.isMounted
             ? Math.max(11.0, Math.min(16.2, effSpd * (u.kind === 'soldier' ? 0.132 : 0.106)))
             : Math.max(10.5, Math.min(16.0, effSpd * 0.182)));
@@ -2844,7 +3257,7 @@
 
         // 战马四蹄、神兽踏步与步卒急行节拍同步扬起沙尘
         if (Math.floor(prevPhase / (Math.PI * 0.85)) !== Math.floor(u.runPhase / (Math.PI * 0.85))) {
-          const isFlyBeast = u.kind === 'beast' && (u.id === 'qinglong' || u.id === 'zhuque');
+          const isFlyBeast = u.kind === 'beast' && (u.id === 'qinglong' || u.id === 'zhuque' || u.id === 'kunpeng');
           if (!isFlyBeast) {
             const hoofCount = u.isMounted || u.kind === 'beast' ? 2 : 1;
             for (let hc = 0; hc < hoofCount; hc++) {
@@ -2875,7 +3288,11 @@
           u.atkReleased = false;
           u.atkTarget = target;
           if (u.kind === 'general' || u.kind === 'beast') {
-            u.rage = Math.min(100, (u.rage || 0) + (u.side === 'player' ? 13.5 : 11.5));
+            let rGain = u.side === 'player' ? 13.5 : 11.5;
+            if (u.side === 'player' && u.kind === 'beast' && battle.bazhenMods && battle.bazhenMods.beastRageMult) {
+              rGain *= (1 + battle.bazhenMods.beastRageMult);
+            }
+            u.rage = Math.min(100, (u.rage || 0) + rGain);
           }
         }
       }
@@ -2935,6 +3352,38 @@
     }
   }
 
+  function toggleAutoSkill(battle) {
+    if (!battle) return false;
+    battle.autoSkill = !battle.autoSkill;
+    if (battle.autoSkill) battle.aimingUnit = null;
+    if (App.Platform && App.Platform.saveStorage) App.Platform.saveStorage('sixiang_auto_skill', battle.autoSkill);
+    return battle.autoSkill;
+  }
+
+  function toggleAutoBeast(battle) {
+    if (!battle) return true;
+    battle.autoBeast = battle.autoBeast === false;
+    if (App.Platform && App.Platform.saveStorage) App.Platform.saveStorage('sixiang_auto_beast', battle.autoBeast);
+    return battle.autoBeast;
+  }
+
+  function triggerPlayerBeastSkill(battle) {
+    const bUnit = battle && battle.playerBeastUnit;
+    if (!bUnit || !bUnit.alive || battle.status !== 'fighting') return false;
+    if (syncPaused(battle)) {
+      if (App.UI) App.UI.showToast('战局已暂停，请先恢复作战', '#fde047');
+      return false;
+    }
+    if ((bUnit.rage || 0) >= 100) {
+      return castBeastUltimate(battle, bUnit);
+    }
+    const nextAuto = toggleAutoBeast(battle);
+    if (App.UI) {
+      App.UI.showToast(nextAuto ? '已开启【神兽自动降临】（满怒自动释放）' : '已切换【神兽手动召唤】（满怒点击头像释放）', '#67e8f9');
+    }
+    return true;
+  }
+
   App.BattleEngine = {
     WORLD_W,
     TROOP_CARDS,
@@ -2944,6 +3393,11 @@
     getDeployedTroopEntries,
     spawnPlayerTroop,
     toggleAutoTroop,
+    toggleAutoSkill,
+    toggleAutoBeast,
+    triggerPlayerBeastSkill,
+    pickBazhenStratagem,
+    getBattleStatsReport,
     updateBattle,
     triggerPlayerGeneralSkill,
     executeGeneralSkillAt,

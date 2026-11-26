@@ -18,9 +18,10 @@
     return Math.round(value * (boosts[kind] || 1));
   }
 
-  // 签到、每日战令、活跃度宝箱与霸业成就均由后端配置下发
+  // 签到、每日战令、每周军令、活跃度宝箱与霸业成就均由后端配置下发
   const SIGN_REWARDS = App.Config.SIGN_REWARDS;
   const DAILY_QUEST_DEFS = App.Config.DAILY_QUESTS;
+  const WEEKLY_QUEST_DEFS = App.Config.WEEKLY_QUESTS;
   const QUEST_BOXES = App.Config.QUEST_BOXES;
   const ACHIEVEMENTS = App.Config.ACHIEVEMENTS;
 
@@ -31,6 +32,8 @@
   let heroEqIndex = {};
   let beastEqIndex = {};
   let cachedArtifactBonus = null;
+  let cachedDeployedSet = new Set();
+  let cachedLineupBond = null;
   let beastStatsCache = {};
   let generalStatsCache = {};
   let teamPowerCache = null;
@@ -68,6 +71,14 @@
     cachedArtifactBonus = App.Config.computeArtifactBonus
       ? App.Config.computeArtifactBonus(state.ownedArtifacts, state.activeArtifactId)
       : null;
+    const depArr = [];
+    const maxDep = P.maxDeploy || 5;
+    (state.deployIds || []).forEach((gid) => {
+      if (depArr.length >= maxDep || !gid || depArr.indexOf(gid) >= 0) return;
+      if (getEffectiveGeneral(gid)) depArr.push(gid);
+    });
+    cachedDeployedSet = new Set(depArr);
+    cachedLineupBond = App.Config.computeLineupBondBonus ? App.Config.computeLineupBondBonus(depArr) : null;
     const inv = state.inventory || [];
     for (let i = 0; i < inv.length; i++) {
       const eq = inv[i];
@@ -90,6 +101,16 @@
     return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
   }
 
+  function getWeekKey() {
+    const d = new Date(nowMs());
+    const utc = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayNum = utc.getUTCDay() || 7;
+    utc.setUTCDate(utc.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((utc - yearStart) / 86400000) + 1) / 7);
+    return utc.getUTCFullYear() + '-W' + weekNo;
+  }
+
   function getExpForNextLevel(lv) {
     return Math.round(P.lordExpBase + (lv - 1) * P.lordExpPerLevel);
   }
@@ -108,7 +129,37 @@
   }
 
   function canFreeSignToday() {
-    return state.signDays < 7 && state.lastSignDate !== getTodayKey();
+    return state.lastSignDate !== getTodayKey();
+  }
+
+  function getCycleSignInfo() {
+    const baseLen = (SIGN_REWARDS && SIGN_REWARDS.length) || 7;
+    const days = state.signDays || 0;
+    const isCycle = days >= baseLen;
+    const cycleDay = isCycle ? (((days - baseLen) % 7) + 1) : (days + 1);
+    const lv = Math.max(1, state.lordLevel || 1);
+    const items = [
+      { day: 1, label: '行军粮草丹×2', tag: '体力补给' },
+      { day: 2, label: '经验竹简×2', tag: '统帅研读' },
+      { day: 3, label: '白银秘宝箱×1', tag: '史诗军需' },
+      { day: 4, label: '招降圣旨×2', tag: '劝降重宝' },
+      { day: 5, label: '黄金缚兽索×1', tag: '御兽金索' },
+      { day: 6, label: '神匠铸造囊×1', tag: '百炼矿锦' },
+      { day: 7, label: '元宝+3 · 黄金宝箱×1', tag: '周满大奖' },
+    ];
+    return {
+      isCycle,
+      cycleDay,
+      totalDays: days,
+      canFree: canFreeSignToday(),
+      days: items.map((it) => ({
+        day: it.day,
+        gold: 1800 + it.day * 450 + (lv - 1) * 85,
+        soul: 65 + it.day * 18 + (lv - 1) * 3,
+        label: it.label,
+        tag: it.tag,
+      })),
+    };
   }
 
   function getCost(kind, n) {
@@ -153,15 +204,22 @@
     const exp = owned ? (owned.exp || 0) : 0;
     const star = owned ? (owned.star || 1) : 1;
     const needExp = getBeastExpNeed(lv);
+    const ascInfo = (owned && App.Config.getBeastAscendInfo) ? App.Config.getBeastAscendInfo(owned) : null;
 
     const lvMult = 1 + (lv - 1) * (P.beastStatLvMult || 0.17);
     const starMult = 1 + (star - 1) * (P.beastStatStarMult || 0.23);
-    const baseHp = Math.round(bCfg.hp * lvMult * starMult);
-    const baseAtk = Math.round(bCfg.atk * lvMult * starMult);
-    const baseDef = Math.round(bCfg.def * lvMult * starMult);
+    const ascMult = ascInfo ? ascInfo.statMult : 1;
+    const baseHp = Math.round(bCfg.hp * lvMult * starMult * ascMult);
+    const baseAtk = Math.round(bCfg.atk * lvMult * starMult * ascMult);
+    const baseDef = Math.round(bCfg.def * lvMult * starMult * ascMult);
 
-    let bonusHp = 0, bonusAtk = 0, bonusDef = 0, bonusCrit = 0;
-    let critDmg = 0, lifesteal = 0, dmgReduce = 0, skillDmgPct = 0, spdPct = 0, initRage = 0;
+    let bonusHp = 0, bonusAtk = 0, bonusDef = 0, bonusCrit = ascInfo ? ascInfo.crit : 0;
+    let critDmg = ascInfo ? ascInfo.critDmg : 0;
+    let lifesteal = ascInfo ? ascInfo.lifesteal : 0;
+    let dmgReduce = ascInfo ? ascInfo.dmgReduce : 0;
+    let skillDmgPct = ascInfo ? ascInfo.skillDmgPct : 0;
+    let spdPct = ascInfo ? ascInfo.spdPct : 0;
+    let initRage = ascInfo ? ascInfo.initRage : 0;
     const eqMap = owned ? getBeastEquippedMap(bid) : {};
     const eqList = Object.values(eqMap);
     eqList.forEach((eq) => {
@@ -177,7 +235,7 @@
       spdPct += eb.spdPct || 0;
       initRage += eb.initRage || 0;
     });
-    const setBonus = App.Config.computeSetBonus ? App.Config.computeSetBonus(eqList) : { hpPct: 0, atkPct: 0, defPct: 0, crit: 0, activeSets: [] };
+    const setBonus = App.Config.computeSetBonus ? App.Config.computeSetBonus(eqList, ascInfo ? ascInfo.path : null) : { hpPct: 0, atkPct: 0, defPct: 0, crit: 0, activeSets: [] };
     bonusHp += Math.round(baseHp * setBonus.hpPct);
     bonusAtk += Math.round(baseAtk * setBonus.atkPct);
     bonusDef += Math.round(baseDef * setBonus.defPct);
@@ -214,6 +272,9 @@
 
     const out = {
       lv, exp, needExp, star,
+      ascend: ascInfo ? ascInfo.path : null,
+      ascendTier: ascInfo ? ascInfo.tier : 0,
+      ascendInfo: ascInfo,
       baseHp, baseAtk, baseDef,
       bonusHp, bonusAtk, bonusDef, bonusCrit,
       hp, atk, def, crit, critDmg, lifesteal, dmgReduce, skillDmgPct, spdPct, initRage, power,
@@ -307,15 +368,32 @@
         critDmg += b.critDmg || 0; lifesteal += b.lifesteal || 0; dmgReduce += b.dmgReduce || 0;
         skillDmgPct += b.skillDmgPct || 0; spdPct += b.spdPct || 0; initRage += b.initRage || 0;
       });
+      let sbHpPct = 0, sbAtkPct = 0, sbDefPct = 0;
       if (App.Config.computeSetBonus) {
         const sb = App.Config.computeSetBonus(eqList, ascInfo ? ascInfo.path : null);
-        bonusHp += Math.round(baseHp * sb.hpPct);
-        bonusAtk += Math.round(baseAtk * sb.atkPct);
-        bonusDef += Math.round(baseDef * sb.defPct);
+        sbHpPct = sb.hpPct || 0;
+        sbAtkPct = sb.atkPct || 0;
+        sbDefPct = sb.defPct || 0;
         bonusCrit += sb.crit;
         critDmg += sb.critDmg || 0; lifesteal += sb.lifesteal || 0; dmgReduce += sb.dmgReduce || 0;
         skillDmgPct += sb.skillDmgPct || 0; spdPct += sb.spdPct || 0; initRage += sb.initRage || 0;
         activeSets = sb.activeSets;
+      }
+      const lb = (cachedDeployedSet.has(gid) && cachedLineupBond) ? cachedLineupBond : null;
+      const lbHpPct = lb ? (lb.hpPct || 0) : 0;
+      const lbAtkPct = lb ? (lb.atkPct || 0) : 0;
+      const lbDefPct = lb ? (lb.defPct || 0) : 0;
+      bonusHp += Math.round(baseHp * (sbHpPct + lbHpPct));
+      bonusAtk += Math.round(baseAtk * (sbAtkPct + lbAtkPct));
+      bonusDef += Math.round(baseDef * (sbDefPct + lbDefPct));
+      if (lb) {
+        bonusCrit += lb.crit || 0;
+        critDmg += lb.critDmg || 0;
+        lifesteal += lb.lifesteal || 0;
+        dmgReduce += lb.dmgReduce || 0;
+        skillDmgPct += lb.skillDmgPct || 0;
+        spdPct += lb.spdPct || 0;
+        initRage += lb.initRage || 0;
       }
       if (cachedArtifactBonus) {
         const ab = cachedArtifactBonus;
@@ -326,17 +404,21 @@
         critDmg += ab.critDmg || 0; lifesteal += ab.lifesteal || 0; dmgReduce += ab.dmgReduce || 0;
         skillDmgPct += ab.skillDmgPct || 0; spdPct += ab.spdPct || 0; initRage += ab.activeRage || 0;
       }
+      var beastFavored = false;
       for (const bid of App.Config.BEAST_IDS) {
         const b = state.ownedBeasts[bid];
         if (b && b.boundGeneralId === gid) {
           const bCfg = App.Config.BEASTS[bid];
           const bStats = getBeastStats(bid);
-          const bScale = (1 + ((b.lv || 1) - 1) * P.beastLvMult) * (1 + ((b.star || 1) - 1) * P.beastBondStarMult);
+          const bAsc = App.Config.getBeastAscendInfo ? App.Config.getBeastAscendInfo(b) : null;
+          const bScale = (1 + ((b.lv || 1) - 1) * P.beastLvMult) * (1 + ((b.star || 1) - 1) * P.beastBondStarMult) * (bAsc ? bAsc.bondMult : 1);
+          beastFavored = base.type === bCfg.favoredType;
+          const favMult = beastFavored ? (P.beastFavoredBondMult || 1.20) : 1.0;
           const share = P.beastBondEquipShare;
-          bonusHp += Math.round(baseHp * bCfg.bondHpPct * bScale + (bStats ? bStats.bonusHp * share : 0));
-          bonusAtk += Math.round(baseAtk * bCfg.bondAtkPct * bScale + (bStats ? bStats.bonusAtk * share : 0));
-          bonusDef += Math.round(bStats ? bStats.bonusDef * share : 0);
-          bonusCrit += bCfg.bondCrit;
+          bonusHp += Math.round(baseHp * (bCfg.bondHpPct || 0) * bScale * favMult + (bStats ? bStats.bonusHp * share : 0));
+          bonusAtk += Math.round(baseAtk * (bCfg.bondAtkPct || 0) * bScale * favMult + (bStats ? bStats.bonusAtk * share : 0));
+          bonusDef += Math.round(baseDef * (bCfg.bondDefPct || 0) * bScale * favMult + (bStats ? bStats.bonusDef * share : 0));
+          bonusCrit += (bCfg.bondCrit || 0) * favMult;
           boundBeastId = bid;
           break;
         }
@@ -361,7 +443,7 @@
       isHosted,
       baseHp, baseAtk, baseDef, bonusHp, bonusAtk, bonusDef,
       hp, atk, def, crit, spd: base.spd, critDmg, lifesteal, dmgReduce, skillDmgPct, spdPct, initRage,
-      boundBeastId, activeSets, power,
+      boundBeastId, beastFavored: !!beastFavored, activeSets, power,
     };
     if (!overrideLv && !customNode) generalStatsCache[gid] = out;
     return out;
@@ -380,14 +462,32 @@
     return total;
   }
 
+  function getLineupBondSummary() {
+    ensureDerivedIndex();
+    return cachedLineupBond || { activeFaction: null, activeBonds: [] };
+  }
+
   function getTeamPower() {
     ensureDerivedIndex();
     if (teamPowerCache !== null) return teamPowerCache;
     let total = getDeployHeroPower();
-    if (state.activeBeastId && state.ownedBeasts[state.activeBeastId]) {
-      const bs = getBeastStats(state.activeBeastId);
+    const active = state.activeBeastId;
+    if (active && state.ownedBeasts[active]) {
+      const bs = getBeastStats(active);
       total += bs ? bs.power : 1800;
     }
+    const supShare = P.supportBeastShare || 0.30;
+    const seenSup = new Set();
+    let supCnt = 0;
+    (state.supportBeastIds || []).forEach((sbid) => {
+      if (supCnt >= 2 || !sbid || sbid === active || seenSup.has(sbid) || !state.ownedBeasts[sbid]) return;
+      seenSup.add(sbid);
+      const sbs = getBeastStats(sbid);
+      if (sbs) {
+        total += Math.round(sbs.power * supShare);
+        supCnt++;
+      }
+    });
     teamPowerCache = total;
     return total;
   }
@@ -429,11 +529,11 @@
   // 这里不做任何扣费、发奖、掷骰，只负责展示用的计算。
   // ============================================================================================
   let state = { factionId: null, lordLevel: 1, lordExp: 0, gold: 0, ingot: 0, soul: 0, stamina: 0, staminaUpdatedAt: Date.now(), ropes: 0, goldRopes: 0,
-    arenaRank: 9999, arenaTickets: 0, guildCoin: 0, signDays: 0, lastSignDate: '', wheelTickets: 0, wheelTotalSpins: 0, maxClearedOrder: 0, towerFloor: 0,
-    shopOffers: [], shopUpdatedAt: 0, ingotShopOffers: [], ingotShopUpdatedAt: 0, items: {}, questProgress: { claimed: {}, boxClaimed: {} }, claimedAchievements: {},
+    arenaRank: 9999, arenaTickets: 0, arenaDefense: null, guildCoin: 0, signDays: 0, lastSignDate: '', wheelTickets: 0, wheelTotalSpins: 0, maxClearedOrder: 0, towerFloor: 0,
+    shopOffers: [], shopUpdatedAt: 0, ingotShopOffers: [], ingotShopUpdatedAt: 0, items: {}, questProgress: { claimed: {}, boxClaimed: {} }, weeklyProgress: { claimed: {} }, claimedAchievements: {},
     patrolClaimedAt: Date.now() - 3600000, patrolQuick: { date: '', freeUsed: 0 },
-    adCounts: {}, clearedLevels: {}, ownedGenerals: {}, hostedGenerals: {}, rentedGenerals: {},
-    recruitPity: {}, ownedBeasts: {}, activeBeastId: null, ownedArtifacts: {}, activeArtifactId: null, deployIds: [], inventory: [] };
+    adCounts: {}, clearedLevels: {}, ownedGenerals: {}, hostedGenerals: {}, rentedGenerals: {}, governors: {},
+    recruitPity: {}, ownedBeasts: {}, activeBeastId: null, supportBeastIds: [], ownedArtifacts: {}, activeArtifactId: null, deployIds: [], inventory: [] };
   const EMPTY = JSON.stringify(state);
   let busy = false;
   // 玩家资料（昵称、ID 等），由服务端下发
@@ -519,6 +619,9 @@
     if (!res.ok) {
       if (!o.quietFail) App.UI.showToast(res.msg || '操作失败', '#f87171');
       return res;
+    }
+    if (typeof res.adEnabled === 'boolean' && App.Config && App.Config.setAdEnabled) {
+      App.Config.setAdEnabled(res.adEnabled);
     }
     if (res.profile) Object.assign(profile, res.profile);
     res.apply = () => { if (res.save) applyServerSave(res.save, res.saveVersion); };
@@ -622,16 +725,131 @@
     return ACHIEVEMENTS.some((a) => !claimed[a.id] && getAchievementValue(a.cat) >= (a.target || 1));
   }
 
+  function getWeeklyQuestReward(def) {
+    const lv = Math.max(1, state.lordLevel || 1);
+    return {
+      gold: (def.gold || 0) + (lv - 1) * 120,
+      soul: (def.soul || 0) + (lv - 1) * 5,
+      ingot: def.ingot || 0,
+      exp: def.exp || 0,
+      itemId: def.itemId || null,
+      itemCount: def.itemCount || 1,
+    };
+  }
+
+  function hasUnclaimedWeeklyQuest() {
+    const wq = state.weeklyProgress || {};
+    if (wq.week !== getWeekKey()) return false;
+    return WEEKLY_QUEST_DEFS.some((d) => !(wq.claimed || {})[d.id] && (wq[d.questKey || d.id] || 0) >= (d.target || 1));
+  }
+
   function hasUnclaimedActivity() {
-    return canFreeSignToday() || hasUnclaimedQuestOrBox() || hasUnclaimedAchievement();
+    return canFreeSignToday() || hasUnclaimedQuestOrBox() || hasUnclaimedWeeklyQuest() || hasUnclaimedAchievement();
+  }
+
+  const GOV_OFFICES = [
+    { slot: 1, name: '司隶校尉府', unlockOrder: 1 },
+    { slot: 2, name: '兖豫都督府', unlockOrder: 8 },
+    { slot: 3, name: '冀幽镇北府', unlockOrder: 16 },
+    { slot: 4, name: '荆襄水军府', unlockOrder: 32 },
+    { slot: 5, name: '巴蜀益州府', unlockOrder: 56 },
+    { slot: 6, name: '江东扬州府', unlockOrder: 88 },
+  ];
+
+  function getGovernorRateFor(gid, gNode) {
+    const base = App.Config.GENERALS[gid];
+    const g = gNode || (state.ownedGenerals && state.ownedGenerals[gid]);
+    if (!base || !g) return 0;
+    const p = App.Config.PATROL || {};
+    const rar = base.rarity || 'B';
+    const rBase = rar === 'SSS' ? (p.govRateSSS || 0.12)
+      : (rar === 'SS' ? (p.govRateSS || 0.095)
+        : (rar === 'S' ? (p.govRateS || 0.07)
+          : (rar === 'A' ? (p.govRateA || 0.05) : (p.govRateB || 0.035))));
+    const star = Math.max(1, g.star || 1);
+    const lv = Math.max(1, g.lv || 1);
+    return rBase + (star - 1) * (p.govRatePerStar || 0.008) + Math.min(0.04, lv * 0.0003);
+  }
+
+  function getGovernorInfo() {
+    const cleared = Math.max(0, state.maxClearedOrder || 0);
+    const govs = state.governors || {};
+    const depSet = new Set(state.deployIds || []);
+    const seen = new Set();
+    let totalBonus = 0;
+    let activeCount = 0;
+    let openCount = 0;
+    const slots = GOV_OFFICES.map((o) => {
+      const unlocked = cleared >= o.unlockOrder;
+      if (unlocked) openCount++;
+      const rawGid = govs[String(o.slot)] || null;
+      const valid = unlocked && rawGid && !depSet.has(rawGid) && state.ownedGenerals[rawGid] && !seen.has(rawGid);
+      if (valid) {
+        seen.add(rawGid);
+        const rate = getGovernorRateFor(rawGid, state.ownedGenerals[rawGid]);
+        totalBonus += rate;
+        activeCount++;
+        return Object.assign({}, o, { unlocked, generalId: rawGid, rate });
+      }
+      return Object.assign({}, o, { unlocked, generalId: null, rate: 0 });
+    });
+    const idleCount = Object.keys(state.ownedGenerals || {}).filter((id) => !depSet.has(id) && !seen.has(id)).length;
+    const matBonus = activeCount * ((App.Config.PATROL && App.Config.PATROL.govMatDropPerSlot) || 0.015);
+    return {
+      slots,
+      openCount,
+      activeCount,
+      idleCount,
+      canAutoAssign: openCount > activeCount && idleCount > 0,
+      totalBonus,
+      totalBonusPct: Math.round(totalBonus * 100),
+      matBonusPct: +(matBonus * 100).toFixed(1),
+    };
+  }
+
+  function getChapterGuide() {
+    if (canFreeSignToday()) {
+      return { title: '今日军饷待领', sub: '前往福利庆典领取今日签到重赏', btn: '领赏', scene: 'activity', tab: 'sign' };
+    }
+    if (hasUnclaimedQuestOrBox() || hasUnclaimedWeeklyQuest() || hasUnclaimedAchievement()) {
+      return { title: '战令成就达成', sub: '有已完成的战令或霸业成就可领取', btn: '领取', scene: 'activity', tab: hasUnclaimedWeeklyQuest() ? 'weekly' : 'quest' };
+    }
+    const gov = getGovernorInfo();
+    if (gov.canAutoAssign) {
+      return { title: '州郡太守虚位', sub: `可委任闲置武将入驻督府提升岁贡`, btn: '委任', action: 'patrol' };
+    }
+    const maxDep = P.maxDeploy || 5;
+    const canAddHero = (state.deployIds || []).length < maxDep && getDeployableGeneralIds().length > (state.deployIds || []).length;
+    if (canAddHero) {
+      return { title: '前线阵位空缺', sub: `当前上阵 ${state.deployIds.length}/${maxDep} 将，速编入新将助阵`, btn: '布阵', scene: 'roster' };
+    }
+    const ownedBeastCnt = Object.keys(state.ownedBeasts || {}).length;
+    if ((state.lordLevel || 1) >= (P.beastUnlockLordLv || 15) && ownedBeastCnt === 0) {
+      return { title: '四象圣兽降世', sub: '前往四象副本讨伐并收服首只守护圣兽', btn: '讨伐', scene: 'beastDungeon' };
+    }
+    if (ownedBeastCnt >= 2 && (state.supportBeastIds || []).length < Math.min(2, ownedBeastCnt - (state.activeBeastId ? 1 : 0))) {
+      return { title: '四象护法空缺', sub: '配置闲置神兽入驻护法槽享30%战力与灵盾', btn: '护法', scene: 'beast' };
+    }
+    const towerLock = featureLockLv('tower');
+    if (!towerLock && (state.towerFloor || 0) < Math.max(3, Math.floor((state.maxClearedOrder || 0) * 0.6))) {
+      return { title: `冲击天梯第 ${(state.towerFloor || 0) + 1} 层`, sub: '登塔赢取金装宝箱与每日层数供奉', btn: '登塔', scene: 'tower' };
+    }
+    const nextOrd = (state.maxClearedOrder || 0) + 1;
+    const nextSt = App.Config.STAGES[nextOrd];
+    if (nextSt) {
+      return { title: `征讨 · ${nextSt.name}`, sub: `攻克第 ${nextOrd} 关扩充九州版图与法宝灵材`, btn: '出征', action: 'nextStage', order: nextOrd };
+    }
+    return { title: '武侯八阵奇策', sub: '挑战征战秘境赢取传世神兵与仙魔灵丹', btn: '秘境', scene: 'challenge' };
   }
 
   function getPatrolInfo() {
     const p = App.Config.PATROL || {};
     const cleared = Math.max(0, state.maxClearedOrder || 0);
-    const goldPerHour = (p.baseGoldPerHour || 450) + cleared * (p.goldPerStagePerHour || 35);
-    const soulPerHour = (p.baseSoulPerHour || 20) + cleared * (p.soulPerStagePerHour || 1.8);
-    const expPerHour = (p.baseExpPerHour || 70) + cleared * (p.expPerStagePerHour || 4.5);
+    const gov = getGovernorInfo();
+    const govMult = 1 + gov.totalBonus;
+    const goldPerHour = ((p.baseGoldPerHour || 450) + cleared * (p.goldPerStagePerHour || 35)) * govMult;
+    const soulPerHour = ((p.baseSoulPerHour || 20) + cleared * (p.soulPerStagePerHour || 1.8)) * govMult;
+    const expPerHour = ((p.baseExpPerHour || 70) + cleared * (p.expPerStagePerHour || 4.5)) * govMult;
     const maxHours = Math.max(1, p.maxHours || 12);
     const minClaimMinutes = Math.max(1, p.minClaimMinutes || 5);
     const now = (App.API && App.API.now) ? App.API.now() : Date.now();
@@ -672,6 +890,7 @@
       quickSoul: boosted('drop', Math.round(soulPerHour * quickHours)),
       quickExp: boosted('exp', Math.round(expPerHour * quickHours)),
       adLeft: Math.max(0, adLimit - adUsed),
+      gov,
     };
   }
 
@@ -682,6 +901,140 @@
   function getIngotShopRefreshSeconds() {
     const mins = (INGOT_SHOP && INGOT_SHOP.refreshMinutes) || 60;
     return Math.max(0, Math.ceil((mins * 60000 - (App.API.now() - (state.ingotShopUpdatedAt || 0))) / 1000));
+  }
+
+  function snapBeforeChest(excludeItemId) {
+    const itemsCopy = Object.assign({}, state.items || {});
+    const eqUids = new Set();
+    (state.inventory || []).forEach((e) => { if (e && e.uid) eqUids.add(e.uid); });
+    return {
+      excludeItemId: excludeItemId || null,
+      chestCount: excludeItemId ? getItemCount(excludeItemId) : 0,
+      res: {
+        ingot: state.ingot || 0,
+        goldRopes: state.goldRopes || 0,
+        ropes: state.ropes || 0,
+        wheelTickets: state.wheelTickets || 0,
+        arenaTickets: state.arenaTickets || 0,
+        stamina: state.stamina || 0,
+        soul: state.soul || 0,
+        gold: state.gold || 0,
+      },
+      items: itemsCopy,
+      eqUids,
+      genIds: new Set(Object.keys(state.ownedGenerals || {})),
+    };
+  }
+
+  function qualitySortVal(q) {
+    return q === 'gold' ? 3 : (q === 'purple' ? 2 : 1);
+  }
+
+  /** 兼容尚未重启的旧版后端：通过开箱前后存档快照精确还原开出的装备/武将/道具/资源列表 */
+  function diffChestRewards(snap, msg) {
+    const out = [];
+    const C = App.Config || {};
+    const genMap = {};
+    Object.keys(state.ownedGenerals || {}).forEach((gid) => {
+      if (!snap.genIds.has(gid)) genMap[gid] = { count: 1, dup: false };
+    });
+    const dupRe = /名将【([^】]+)】(?:×(\d+))?\(转将魂\)/g;
+    let m;
+    const text = String(msg || '');
+    while ((m = dupRe.exec(text)) !== null) {
+      const gName = m[1];
+      const cnt = Math.max(1, Number(m[2]) || 1);
+      const gid = Object.keys(C.GENERALS || {}).find((id) => C.GENERALS[id] && C.GENERALS[id].name === gName);
+      if (gid) {
+        if (!genMap[gid]) genMap[gid] = { count: cnt, dup: true };
+        else genMap[gid].count += cnt;
+      }
+    }
+    Object.keys(genMap).forEach((gid) => {
+      out.push({ type: 'general', id: gid, amount: genMap[gid].count, dup: genMap[gid].dup });
+    });
+
+    const eqCounts = {};
+    (state.inventory || []).forEach((eq) => {
+      if (eq && eq.uid && !snap.eqUids.has(eq.uid) && eq.tplId) {
+        eqCounts[eq.tplId] = (eqCounts[eq.tplId] || 0) + 1;
+      }
+    });
+    Object.keys(eqCounts)
+      .sort((a, b) => qualitySortVal(((C.EQUIP_TEMPLATES || {})[b] || {}).quality) - qualitySortVal(((C.EQUIP_TEMPLATES || {})[a] || {}).quality))
+      .forEach((tplId) => out.push({ type: 'equip', id: tplId, amount: eqCounts[tplId] }));
+
+    const itemGains = [];
+    Object.keys(state.items || {}).forEach((iid) => {
+      if (iid === snap.excludeItemId) return;
+      const diff = (state.items[iid] || 0) - (snap.items[iid] || 0);
+      if (diff > 0) itemGains.push({ type: 'item', id: iid, amount: diff });
+    });
+    itemGains
+      .sort((a, b) => qualitySortVal(((C.ITEMS || {})[b.id] || {}).quality) - qualitySortVal(((C.ITEMS || {})[a.id] || {}).quality))
+      .forEach((it) => out.push(it));
+
+    ['ingot', 'goldRopes', 'ropes', 'wheelTickets', 'arenaTickets', 'stamina', 'soul', 'gold'].forEach((rk) => {
+      const diff = (state[rk] || 0) - (snap.res[rk] || 0);
+      if (diff > 0) out.push({ type: rk, amount: diff });
+    });
+    return out;
+  }
+
+  async function useOrOpenItem(itemId, count) {
+    const reqN = count || 1;
+    const itemCfg = App.Config.ITEMS && App.Config.ITEMS[itemId];
+    const isChest = !!(itemCfg && (itemCfg.kind === 'chest' || (itemCfg.effect && itemCfg.effect.type === 'chest')));
+    if (!isChest) {
+      return act('/api/item/use', { itemId, count: reqN }, { color: '#fde047' });
+    }
+    const canPopup = !!(App.UI && App.UI.openRewardModal);
+    const snap = snapBeforeChest(itemId);
+    const res = await act('/api/item/use', { itemId, count: reqN }, { color: '#fde047', silent: canPopup });
+    if (res && res.ok && canPopup) {
+      const rewards = (Array.isArray(res.rewards) && res.rewards.length)
+        ? res.rewards
+        : diffChestRewards(snap, res.msg);
+      const openedN = res.openedCount || Math.max(1, (snap.chestCount || reqN) - getItemCount(itemId));
+      if (rewards.length) {
+        App.UI.openRewardModal({
+          title: `开启【${itemCfg.name || '秘宝箱'}】${openedN > 1 ? ' ×' + openedN : ''}`,
+          chestId: itemId,
+          iconId: itemId,
+          count: openedN,
+          rewards,
+          lvInfo: res.lvInfo,
+        });
+      } else if (res.msg && App.UI.showToast) {
+        App.UI.showToast(res.msg, '#fde047');
+      }
+    }
+    return res;
+  }
+
+  async function claimQuestBox(boxId) {
+    const box = (QUEST_BOXES || []).find((b) => b.id === boxId);
+    const canPopup = !!(App.UI && App.UI.openRewardModal);
+    const snap = snapBeforeChest(null);
+    const res = await act('/api/quest/box', { boxId }, { color: '#fde047', silent: canPopup });
+    if (res && res.ok && canPopup) {
+      const rewards = (Array.isArray(res.rewards) && res.rewards.length)
+        ? res.rewards
+        : diffChestRewards(snap, res.msg);
+      const bTitle = (box && box.title) || res.boxTitle || '活跃宝箱';
+      if (rewards.length) {
+        App.UI.openRewardModal({
+          title: `开启【${bTitle}】`,
+          iconId: (box && box.itemId) || 'chest_bronze',
+          count: 1,
+          rewards,
+          lvInfo: res.lvInfo,
+        });
+      } else if (res.msg && App.UI.showToast) {
+        App.UI.showToast(res.msg, '#fde047');
+      }
+    }
+    return res;
   }
 
   const g = (generalId) => ({ generalId });
@@ -725,20 +1078,23 @@
     get INGOT_EXCHANGE_RATE() { return P.ingotExchangeRate || 10000; },
     SIGN_REWARDS,
     DAILY_QUEST_DEFS,
+    WEEKLY_QUEST_DEFS,
     QUEST_BOXES,
     ACHIEVEMENTS,
     get: () => state,
     getRevision: () => saveRevision,
     getTodayKey,
+    getWeekKey,
     getProfile: () => profile,
     setProfile: (p) => Object.assign(profile, p || {}),
     rename: (name) => act('/api/player/rename', { name }),
     isBusy: () => busy,
     applyServerSave, act, featureLockLv, checkFeature,
     // ---- 只读计算（展示用）
-    getExpForNextLevel, getItemCount, getItemCountByCat, canFreeSignToday,
-    hasUnclaimedQuestOrBox, hasUnclaimedAchievement, hasUnclaimedActivity,
-    getGeneralMaxLv, getAdRewardAmount, getQuestReward, getQuestBoxReward, getActivePoints, getAchievementValue, getPatrolInfo,
+    getExpForNextLevel, getItemCount, getItemCountByCat, canFreeSignToday, getCycleSignInfo,
+    hasUnclaimedQuestOrBox, hasUnclaimedWeeklyQuest, hasUnclaimedAchievement, hasUnclaimedActivity,
+    getGeneralMaxLv, getAdRewardAmount, getQuestReward, getWeeklyQuestReward, getQuestBoxReward, getActivePoints, getAchievementValue,
+    getPatrolInfo, getGovernorInfo, getGovernorRateFor, getChapterGuide, getLineupBondSummary,
     getCost, getStaminaCost,
     syncStamina, getNextStaminaSeconds, getEquippedMap, getBeastEquippedMap, getBeastExpNeed, getBeastStats,
     getGeneralStats, getGeneralPower, getStandaloneGeneralPower, getActiveRented, getEffectiveGeneral, getDeployableGeneralIds,
@@ -763,13 +1119,18 @@
     extendHire: (id, hours) => act('/api/hire/extend', { id, hours }, { color: '#fde047' }),
     equipItem: (generalId, uid) => act('/api/equip/wear', { generalId, uid }, { silent: true }),
     equipBeastItem: (beastId, uid) => act('/api/equip/wear', { beastId, uid }),
+    autoEquipGeneral: (generalId) => act('/api/equip/auto-wear', { generalId }, { color: '#4ade80' }),
+    unequipAllGeneral: (generalId) => act('/api/equip/take-off-all', { generalId }),
+    autoEquipBeast: (beastId) => act('/api/equip/auto-wear', { beastId }, { color: '#4ade80' }),
+    unequipAllBeast: (beastId) => act('/api/equip/take-off-all', { beastId }),
     unequipItem: (uid) => act('/api/equip/take-off', { uid }, { silent: true }),
     enhanceEquip: (uid, times) => act('/api/equip/enhance', { uid, times: times || 1 }),
-    upgradeTroop: (troopId) => act('/api/equip/troop-upgrade', { troopId }),
+    upgradeTroop: (troopId, times) => act('/api/equip/troop-upgrade', { troopId, times: times || 1 }),
     towerIdle: () => act('/api/tower/idle', {}, { color: '#fde047' }),
     starUpEquip: (uid) => act('/api/equip/star-up', { uid }),
     advanceEquip: (uid) => act('/api/equip/advance', { uid }),
     synthesizeEquip: (uids) => act('/api/equip/synthesize', { uids }, { color: '#fde047' }),
+    batchSynthesizeEquip: (quality) => act('/api/equip/batch-synthesize', { quality }, { color: '#fde047' }),
     forgeOreEquip: () => act('/api/equip/forge-ore', {}, { color: '#fde047' }),
     forgeSilkEquip: () => act('/api/equip/forge-silk', {}, { color: '#fde047' }),
     reforgeEquip: (uid) => act('/api/equip/reforge', { uid }, { color: '#4ade80' }),
@@ -779,21 +1140,28 @@
     equipArtifact: (artifactId) => act('/api/equip/artifact-equip', { artifactId: artifactId || null }),
     demonRedeem: (id) => act('/api/demon/redeem', { id }),
     arenaReward: () => act('/api/arena/reward', {}, { color: '#fde047' }),
+    saveArenaDefense: (clear) => act('/api/arena/defense', { clear: !!clear }, { color: '#fde047' }),
+    assignGovernor: (slot, generalId, auto) => act('/api/general/governor', { slot, generalId: generalId || null, auto: !!auto }, { color: '#fde047' }),
     shareClaim: () => act('/api/share/claim', {}, { color: '#fde047' }),
     bindInviter: (code, quiet) => act('/api/invite/bind', { code: String(code) }, quiet ? { quietFail: true, parallel: true } : { color: '#fde047' }),
     claimInvite: (count) => act('/api/invite/claim', { count }, { color: '#fde047' }),
     sellEquip: (uid) => act('/api/equip/sell', { uid }, { color: '#fde047' }),
     sellAllBlueEquips: () => act('/api/equip/sell-all-blue', {}, { color: '#fde047' }),
-    upgradeBeast: (id) => act('/api/beast/feed', b(id)),
+    upgradeBeast: (id, times) => act('/api/beast/feed', { beastId: id, times: times || 1 }),
     feedBeastScroll: (id) => act('/api/beast/feed-scroll', b(id)),
     starUpBeast: (id) => act('/api/beast/star-up', b(id)),
+    ascendBeast: (id, path) => act('/api/beast/ascend', { beastId: id, path }, { color: path === 'xian' ? '#67e8f9' : '#f472b6' }),
+    ascendUpBeast: (id) => act('/api/beast/ascend-up', { beastId: id }, { color: '#fde047' }),
+    switchAscendBeast: (id) => act('/api/beast/ascend-switch', { beastId: id }, { color: '#38bdf8' }),
     bindBeastToGeneral: (beastId, generalId) => act('/api/beast/bind', { beastId, generalId }, { silent: true }),
     setActiveBeast: (beastId) => act('/api/beast/active', { beastId: beastId || null }, { silent: true }),
-    useOrOpenItem: (itemId, count) => act('/api/item/use', { itemId, count: count || 1 }, { color: '#fde047' }),
+    setSupportBeast: (slot, beastId) => act('/api/beast/support', { slot, beastId: beastId || null }),
+    useOrOpenItem,
     sellItem: (itemId, count) => act('/api/item/sell', { itemId, count: count || 1 }, { color: '#fde047' }),
     claimSignDay: (ad) => act('/api/sign/claim', { ad: !!ad }, { color: '#fde047' }),
     claimQuest: (questId) => act('/api/quest/claim', { questId }),
-    claimQuestBox: (boxId) => act('/api/quest/box', { boxId }, { color: '#fde047' }),
+    claimWeeklyQuest: (questId) => act('/api/quest/weekly-claim', { questId }, { color: '#fde047' }),
+    claimQuestBox,
     claimAchievement: (id) => act('/api/achievement/claim', { id }, { color: '#fde047' }),
     claimPatrol: (quick, ad) => act('/api/patrol/claim', { quick: !!quick, ad: !!ad }, { color: '#fde047' }),
     spinWheel: (ingotCost) => act('/api/wheel/spin', ingotCost > 0 ? { ingotCost: Math.floor(ingotCost) } : {}, { defer: true, silent: true }),
@@ -812,6 +1180,6 @@
     doubleReward: (battleId) => act('/api/battle/double', { battleId }),
     recruit: (battleId, ad) => act('/api/battle/recruit', { battleId, ad: !!ad }, { silent: true }),
     catchBeast: (battleId, goldRope) => act('/api/battle/catch', { battleId, goldRope: !!goldRope }, { silent: true }),
-    refresh: () => App.API.get('/api/player/state').then((res) => { if (res && res.ok && res.profile) Object.assign(profile, res.profile); if (res && res.ok && res.save) applyServerSave(res.save, res.saveVersion); return res; }),
+    refresh: () => App.API.get('/api/player/state').then((res) => { if (res && res.ok && typeof res.adEnabled === 'boolean' && App.Config && App.Config.setAdEnabled) App.Config.setAdEnabled(res.adEnabled); if (res && res.ok && res.profile) Object.assign(profile, res.profile); if (res && res.ok && res.save) applyServerSave(res.save, res.saveVersion); return res; }),
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

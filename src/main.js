@@ -25,6 +25,7 @@
     }
     if (SCENE_FEATURE[name] && !App.State.checkFeature(SCENE_FEATURE[name])) return;
     if (App.UI && App.UI.closeExchangeModal) App.UI.closeExchangeModal();
+    if (App.UI && App.UI.closeRewardModal) App.UI.closeRewardModal();
     const prevSc = App.Scenes[currentScene];
     if (prevSc && prevSc.leave && currentScene !== name) {
       try { prevSc.leave(); } catch (e) {}
@@ -106,6 +107,27 @@
       subTitle = '踏破三重魔坛 · 炼化九幽化魔丹与炼狱魔煞晶';
       const passes = (lv.special && lv.special.cfg && lv.special.cfg.passes) || [];
       enemyId = (passes[passes.length - 1] && passes[passes.length - 1].generalId) || 'lvbu';
+    } else if (mode === 'beast_xian') {
+      title = lv.name || '神兽成神 · 万兽封神坛';
+      subTitle = '连战三重护道神兽 · 夺取万兽封神丹与太初圣兽髓';
+      const passes = (lv.special && lv.special.cfg && lv.special.cfg.passes) || [];
+      const bId = (passes[passes.length - 1] && passes[passes.length - 1].beastId) || 'zhulong';
+      enemyKind = 'beast';
+      enemyId = bId;
+      enemyName = '神.' + ((App.Config.BEASTS && App.Config.BEASTS[bId] && App.Config.BEASTS[bId].name) || '创世烛龙');
+    } else if (mode === 'beast_mo') {
+      title = lv.name || '神兽成魔 · 洪荒魔兽渊';
+      subTitle = '连破三重九幽兽狱 · 夺取九幽化魔兽丹与炼狱魔兽晶';
+      const passes = (lv.special && lv.special.cfg && lv.special.cfg.passes) || [];
+      const bId = (passes[passes.length - 1] && passes[passes.length - 1].beastId) || 'hundun';
+      enemyKind = 'beast';
+      enemyId = bId;
+      enemyName = '魔.' + ((App.Config.BEASTS && App.Config.BEASTS[bId] && App.Config.BEASTS[bId].name) || '鸿蒙混沌');
+    } else if (mode === 'bazhen') {
+      title = lv.name || '武侯八阵图 · 奇策闯关';
+      subTitle = '连破五门 · 每过一门三选一武侯奇策加持全军';
+      const passes = (lv.special && lv.special.cfg && lv.special.cfg.passes) || [];
+      enemyId = (passes[passes.length - 1] && passes[passes.length - 1].generalId) || 'zhugeliang';
     } else {
       title = lv.name || '征战秘境 · 奇兵破敌';
       subTitle = '整饬兵甲 · 迎战强敌';
@@ -902,6 +924,7 @@
             App.UI.clearHits();
             if (sc && sc.render) sc.render(ctx, elapsed);
             if (App.UI.drawExchangeModal) App.UI.drawExchangeModal(ctx);
+            if (App.UI.drawRewardModal) App.UI.drawRewardModal(ctx, elapsed);
             if (App.Compliance && App.Compliance.renderOverlay) App.Compliance.renderOverlay(ctx);
             if (currentScene !== 'battleLoading' && App.UI.drawLoadingOverlay) App.UI.drawLoadingOverlay(ctx);
             App.UI.drawToasts(ctx);

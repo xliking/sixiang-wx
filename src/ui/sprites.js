@@ -1491,28 +1491,40 @@
     } else if (u.kind === 'beast') {
       const rel = 0.34;
       const bid = u.id || 'baihu';
-      const maxLunge = bid === 'baihu' ? 34 : (bid === 'qinglong' ? 30 : (bid === 'zhuque' ? 28 : 24));
+      const isPouncer = bid === 'baihu' || bid === 'qiongqi' || bid === 'hundun';
+      const isSteed = bid === 'qilin' || bid === 'baize';
+      const isSoarer = bid === 'zhuque' || bid === 'kunpeng';
+      const maxLunge = bid === 'zhulong' ? 38 : (isPouncer ? 34 : (isSteed ? 31 : (bid === 'qinglong' ? 30 : (isSoarer ? 28 : 26))));
       if (p < rel) {
         const k = smoothstep(0, rel, p);
-        pose.lungeX = -11 * k;
-        pose.lungeY -= (bid === 'zhuque' ? 13 : (bid === 'qinglong' ? 5 : -2.5)) * k;
-        pose.bodyPitch = (bid === 'zhuque' ? -0.19 : -0.13) * k;
+        pose.lungeX = (bid === 'zhulong' ? -14 : -11) * k;
+        pose.lungeY -= (bid === 'zhulong' ? 14 : (isSoarer ? 13 : (isSteed ? 5.5 : (bid === 'qinglong' ? 3.2 : -2.5)))) * k;
+        pose.bodyPitch = (bid === 'zhulong' ? -0.22 : (isSoarer ? -0.19 : (isSteed ? -0.17 : -0.13))) * k;
         pose.bodySkew = -0.08 * k;
-        pose.scaleX = 1 + (bid === 'baihu' ? 0.06 : -0.05) * k;
-        pose.scaleY = 1 + (bid === 'baihu' ? -0.10 : 0.06) * k;
+        pose.scaleX = 1 + (isPouncer ? 0.06 : (bid === 'zhulong' ? 0.05 : -0.04)) * k;
+        pose.scaleY = 1 + (isPouncer ? -0.09 : (bid === 'zhulong' ? 0.08 : 0.05)) * k;
       } else if (p < 0.68) {
         const s = easeOutCubic((p - rel) / 0.34);
         const arc = Math.sin(s * Math.PI);
-        pose.lungeX = -11 + (maxLunge + 11) * s;
-        pose.lungeY -= bid === 'baihu'
+        const backX = bid === 'zhulong' ? -14 : -11;
+        pose.lungeX = backX + (maxLunge - backX) * s;
+        pose.lungeY -= isPouncer
           ? (12.5 * arc - 2.5 * (1 - s))
-          : (bid === 'zhuque' ? (13 * (1 - s) - 5 * s) : (4.5 * arc));
-        pose.bodyPitch = (bid === 'zhuque' ? -0.19 : -0.13) + (bid === 'baihu' ? 0.38 : 0.33) * s;
+          : (bid === 'zhulong'
+            ? (14 * (1 - s) - 6.0 * s)
+            : (isSteed
+              ? (10.2 * arc + 2.2 * (1 - s))
+              : (isSoarer
+                ? (13 * (1 - s) - 5 * s)
+                : (bid === 'qinglong'
+                  ? (3.2 * (1 - s) + 1.8 * arc)
+                  : (-2.5 * (1 - s) + 5.2 * arc)))));
+        pose.bodyPitch = (bid === 'zhulong' ? -0.22 : (isSoarer ? -0.19 : (isSteed ? -0.17 : -0.13))) + (bid === 'zhulong' ? 0.42 : (isPouncer ? 0.38 : (isSteed ? 0.35 : 0.33))) * s;
         pose.bodySkew = -0.08 + 0.25 * s;
-        pose.scaleX = 1 + 0.08 * arc;
+        pose.scaleX = 1 + (bid === 'zhulong' ? 0.11 : 0.08) * arc;
         pose.scaleY = 1 - 0.05 * arc;
         pose.strikeFlash = Math.sin(s * Math.PI * 0.82);
-        pose.afterimage = Math.max(pose.afterimage, arc * 0.72);
+        pose.afterimage = Math.max(pose.afterimage, arc * (bid === 'zhulong' ? 0.88 : 0.72));
       } else {
         const r = smoothstep(0.68, 1.0, p);
         pose.lungeX = maxLunge * (1 - r);
@@ -3771,45 +3783,49 @@
     return beastPartsCache[ck];
   }
 
-  function getCleanZhuqueParts(img) {
-    if (!img) return null;
-    const iw = img.naturalWidth || img.width || 0;
-    const ih = img.naturalHeight || img.height || 0;
-    if (iw < 16 || ih < 16) return null;
-    const ck = `zhuque|${iw}x${ih}`;
-    if (beastPartsCache[ck]) return beastPartsCache[ck];
+  function clipImageWithHoles(img, iw, ih, outerPts, holePolys, shadeColor) {
+    const cvs = createOffscreen(iw, ih);
+    if (!cvs) return null;
+    const g = cvs.getContext('2d');
+    if (!g) return null;
+    g.save();
+    g.beginPath();
+    for (let i = 0; i < outerPts.length; i++) {
+      const pt = outerPts[i];
+      if (i === 0) g.moveTo(pt[0] * iw, pt[1] * ih);
+      else g.lineTo(pt[0] * iw, pt[1] * ih);
+    }
+    g.closePath();
+    if (holePolys) {
+      for (let h = 0; h < holePolys.length; h++) {
+        const hp = holePolys[h];
+        for (let i = 0; i < hp.length; i++) {
+          const pt = hp[i];
+          if (i === 0) g.moveTo(pt[0] * iw, pt[1] * ih);
+          else g.lineTo(pt[0] * iw, pt[1] * ih);
+        }
+        g.closePath();
+      }
+    }
+    g.clip('evenodd');
+    g.drawImage(img, 0, 0, iw, ih);
+    if (shadeColor) {
+      g.globalCompositeOperation = 'source-atop';
+      g.fillStyle = shadeColor;
+      g.fillRect(0, 0, iw, ih);
+    }
+    g.restore();
+    return cvs;
+  }
 
-    const leftWing = clipImageToOffscreen(img, iw, ih, (g, W, H) => {
-      g.moveTo(W * 0.04, 0);
-      g.lineTo(W * 0.50, 0);
-      g.lineTo(W * 0.50, H * 0.485);
-      g.lineTo(W * 0.36, H * 0.45);
-      g.lineTo(W * 0.23, H * 0.34);
-      g.lineTo(W * 0.04, H * 0.18);
-    });
-    const rightWing = clipImageToOffscreen(img, iw, ih, (g, W, H) => {
-      g.moveTo(W * 0.655, 0);
-      g.lineTo(W, 0);
-      g.lineTo(W, H * 0.58);
-      g.lineTo(W * 0.618, H * 0.545);
-      g.lineTo(W * 0.648, H * 0.36);
-    });
-    const bodyTail = clipImageToOffscreen(img, iw, ih, (g, W, H) => {
-      g.moveTo(0, H * 0.17);
-      g.lineTo(W * 0.22, H * 0.33);
-      g.lineTo(W * 0.38, H * 0.43);
-      g.lineTo(W * 0.46, H * 0.42);
-      g.lineTo(W * 0.49, H * 0.22);
-      g.lineTo(W * 0.655, H * 0.22);
-      g.lineTo(W * 0.665, H * 0.42);
-      g.lineTo(W * 0.68, H * 0.56);
-      g.lineTo(W * 0.76, H * 0.66);
-      g.lineTo(W * 0.76, H);
-      g.lineTo(0, H);
-    });
-    if (!leftWing || !rightWing || !bodyTail) return null;
-    beastPartsCache[ck] = { leftWing, rightWing, bodyTail };
-    return beastPartsCache[ck];
+  function clipPolyPart(img, iw, ih, polyPts, shadeColor) {
+    return clipImageToOffscreen(img, iw, ih, (g, W, H) => {
+      for (let i = 0; i < polyPts.length; i++) {
+        const pt = polyPts[i];
+        if (i === 0) g.moveTo(pt[0] * W, pt[1] * H);
+        else g.lineTo(pt[0] * W, pt[1] * H);
+      }
+    }, shadeColor);
   }
 
   // 原画手绘真肢双骨骼纵跃曲线 [a1(上肢角), a2(小腿虎掌角), lift(肩胛/股骨上提比)]
@@ -3838,6 +3854,329 @@
     [-1.80, -0.018, -0.30],
   ];
 
+  // 圣兽分类步态曲线：祥瑞灵兽高抬膝飞驰（麒麟/白泽）、重甲凶兽裂地奔踏（饕餮/梼杌）、神魔双足阔步（烛龙）
+  const STEED_FORE_KEYS = [
+    [ 0.74,  0.68, 0.08],
+    [ 0.34,  0.32, 0.00],
+    [-0.24, -0.22, 0.00],
+    [-0.04, -0.96, 0.62],
+    [ 0.66, -0.34, 0.56],
+    [ 0.78,  0.18, 0.28],
+  ];
+  const STEED_HIND_KEYS = [
+    [-0.36,  0.06, 0.00],
+    [-0.58, -0.42, 0.28],
+    [-0.64, -0.84, 0.68],
+    [-0.24, -0.56, 0.88],
+    [ 0.16,  0.62, 0.58],
+    [-0.20,  0.28, 0.06],
+  ];
+  const STEED_BODY_KEYS = [
+    [-0.30,  0.020,  0.90],
+    [ 0.90,  0.030,  1.40],
+    [ 0.25,  0.006,  0.30],
+    [-1.70, -0.026, -0.70],
+    [-3.10, -0.044, -1.10],
+    [-1.60, -0.016, -0.25],
+  ];
+
+  const BEHEMOTH_FORE_KEYS = [
+    [ 0.70,  0.66, 0.05],
+    [ 0.32,  0.30, 0.00],
+    [-0.26, -0.22, 0.00],
+    [-0.08, -0.76, 0.58],
+    [ 0.54, -0.20, 0.52],
+    [ 0.72,  0.28, 0.22],
+  ];
+  const BEHEMOTH_HIND_KEYS = [
+    [-0.40, -0.02, 0.00],
+    [-0.64, -0.44, 0.25],
+    [-0.68, -0.78, 0.62],
+    [-0.24, -0.48, 0.78],
+    [ 0.16,  0.54, 0.52],
+    [-0.20,  0.22, 0.05],
+  ];
+  const BEHEMOTH_BODY_KEYS = [
+    [-0.35,  0.024,  1.10],
+    [ 1.10,  0.034,  1.70],
+    [ 0.35,  0.008,  0.35],
+    [-1.75, -0.028, -0.75],
+    [-3.10, -0.046, -1.15],
+    [-1.60, -0.018, -0.25],
+  ];
+
+  const BIPED_DRAGON_KEYS = [
+    [ 0.52,  0.46, 0.05],
+    [ 0.20,  0.14, 0.00],
+    [-0.28, -0.22, 0.00],
+    [-0.18, -0.68, 0.55],
+    [ 0.38, -0.24, 0.60],
+    [ 0.58,  0.22, 0.25],
+  ];
+
+  // 六大四足圣兽（麒麟/白泽/穷奇/混沌/饕餮/梼杌）原画像素级分件与双骨骼关节表
+  const QUAD_BEAST_SPECS = {
+    qilin: {
+      sink: 14, farSc: 0.94, shade: 'rgba(26, 16, 8, 0.26)',
+      foreKeys: STEED_FORE_KEYS, hindKeys: STEED_HIND_KEYS, bodyKeys: STEED_BODY_KEYS,
+      tail: { pts: [[0, 0.19], [0.435, 0.19], [0.445, 0.445], [0.455, 0.482], [0.420, 0.518], [0.345, 0.525], [0, 0.532]], piv: [0.428, 0.478], amp: 0.15 },
+      body: [[0.432, 0.35], [0.51, 0.34], [0.51, 0], [1.0, 0], [1.0, 0.51], [0.902, 0.51], [0.902, 0.558], [0.888, 0.588], [0.852, 0.648], [0.812, 0.675], [0.782, 0.665], [0.745, 0.605], [0.675, 0.625], [0.605, 0.610], [0.525, 0.585], [0.475, 0.575], [0.422, 0.520], [0.438, 0.475]],
+      cap: [[0.640, 0.440], [0.828, 0.440], [0.822, 0.642], [0.760, 0.632], [0.648, 0.585]],
+      hipCap: [[0.420, 0.442], [0.542, 0.442], [0.535, 0.590], [0.470, 0.582], [0.420, 0.525]],
+      nhUp: { pts: [[0.295, 0.565], [0.418, 0.495], [0.535, 0.565], [0.515, 0.675], [0.405, 0.775], [0.330, 0.770]], cap: [0.368, 0.755, 0.038, 0.040] },
+      nhLo: { pts: [[0.230, 0.680], [0.335, 0.725], [0.408, 0.750], [0.405, 0.985], [0.295, 0.985], [0.230, 0.855]], cap: [0.368, 0.755, 0.035, 0.036] },
+      nfUp: { pts: [[0.648, 0.610], [0.792, 0.575], [0.838, 0.775], [0.762, 0.785], [0.648, 0.715]], cap: [0.805, 0.762, 0.036, 0.038] },
+      nfLo: { pts: [[0.722, 0.785], [0.775, 0.745], [0.845, 0.745], [0.935, 0.992], [0.825, 0.992], [0.722, 0.890]], cap: [0.805, 0.762, 0.034, 0.035] },
+      joints: {
+        nh: [0.455, 0.565, 0.368, 0.755, 0.355, 0.950, 0.455, 0.565, -0.32, 0.02, 1.0],
+        fh: [0.455, 0.565, 0.368, 0.755, 0.355, 0.950, 0.548, 0.565, -0.18, 0.14, 1.0],
+        nf: [0.748, 0.605, 0.805, 0.762, 0.882, 0.955, 0.742, 0.612,  0.22, 0.24, 1.04],
+        ff: [0.748, 0.605, 0.805, 0.762, 0.882, 0.955, 0.812, 0.605,  0.44, 0.38, 1.0],
+      },
+    },
+    baize: {
+      sink: 14, farSc: 0.93, shade: 'rgba(16, 30, 44, 0.25)',
+      foreKeys: STEED_FORE_KEYS, hindKeys: STEED_HIND_KEYS, bodyKeys: STEED_BODY_KEYS,
+      tail: { pts: [[0, 0.25], [0.485, 0.25], [0.500, 0.495], [0.455, 0.535], [0.395, 0.542], [0.342, 0.625], [0.312, 0.735], [0.282, 0.835], [0, 0.855]], piv: [0.478, 0.495], amp: 0.13 },
+      body: [[0.485, 0.25], [0.485, 0], [1.0, 0], [1.0, 0.555], [0.902, 0.555], [0.885, 0.635], [0.835, 0.672], [0.780, 0.680], [0.750, 0.620], [0.655, 0.645], [0.585, 0.688], [0.520, 0.655], [0.455, 0.615], [0.348, 0.625], [0.395, 0.542], [0.448, 0.532], [0.492, 0.495]],
+      cap: [[0.635, 0.365], [0.835, 0.365], [0.825, 0.655], [0.755, 0.645], [0.645, 0.595]],
+      nhUp: { pts: [[0.355, 0.632], [0.442, 0.555], [0.518, 0.615], [0.488, 0.725], [0.412, 0.798], [0.345, 0.778]], cap: [0.382, 0.772, 0.038, 0.040] },
+      nhLo: { pts: [[0.290, 0.762], [0.418, 0.758], [0.442, 0.965], [0.345, 0.965], [0.290, 0.875]], cap: [0.382, 0.772, 0.035, 0.036] },
+      nfUp: { pts: [[0.618, 0.585], [0.785, 0.565], [0.785, 0.762], [0.650, 0.772], [0.612, 0.680]], cap: [0.732, 0.752, 0.042, 0.040] },
+      nfLo: { pts: [[0.608, 0.742], [0.785, 0.738], [0.840, 0.995], [0.695, 0.995], [0.608, 0.885]], cap: [0.732, 0.752, 0.038, 0.038] },
+      joints: {
+        nh: [0.455, 0.595, 0.382, 0.772, 0.398, 0.935, 0.455, 0.595, -0.34, 0.06, 1.0],
+        fh: [0.455, 0.595, 0.382, 0.772, 0.398, 0.935, 0.542, 0.598, -0.20, 0.16, 1.0],
+        nf: [0.722, 0.595, 0.732, 0.752, 0.772, 0.955, 0.722, 0.595,  0.08, 0.18, 1.04],
+        ff: [0.722, 0.595, 0.732, 0.752, 0.772, 0.955, 0.805, 0.602,  0.34, 0.38, 1.0],
+      },
+    },
+    qiongqi: {
+      sink: 14, farSc: 0.92, shade: 'rgba(26, 10, 10, 0.28)',
+      foreKeys: TIGER_FORE_KEYS, hindKeys: TIGER_HIND_KEYS, bodyKeys: TIGER_BODY_KEYS,
+      wings: { pts: [[0, 0], [0.775, 0], [0.775, 0.31], [0.715, 0.38], [0.655, 0.53], [0.415, 0.53], [0, 0.395]], piv: [0.575, 0.425], amp: 0.12 },
+      body: [[0, 0.380], [0.240, 0.410], [0.415, 0.480], [0.560, 0.470], [0.630, 0.380], [0.735, 0.280], [0.780, 0.260], [1.0, 0.260], [1.0, 0.715], [0.865, 0.715], [0.840, 0.675], [0.785, 0.722], [0.705, 0.728], [0.665, 0.655], [0.560, 0.665], [0.525, 0.692], [0.445, 0.665], [0.345, 0.665], [0.285, 0.695], [0.215, 0.742], [0, 0.748]],
+      cap: [[0.552, 0.382], [0.748, 0.382], [0.742, 0.585], [0.682, 0.658], [0.562, 0.635]],
+      nhUp: { pts: [[0.250, 0.685], [0.355, 0.565], [0.465, 0.635], [0.435, 0.725], [0.325, 0.825], [0.245, 0.815]], cap: [0.282, 0.805, 0.042, 0.044] },
+      nhLo: { pts: [[0.215, 0.775], [0.330, 0.785], [0.345, 0.965], [0.215, 0.965]], cap: [0.282, 0.805, 0.038, 0.040] },
+      nfUp: { pts: [[0.545, 0.595], [0.688, 0.605], [0.685, 0.775], [0.565, 0.785]], cap: [0.628, 0.755, 0.046, 0.044] },
+      nfLo: { pts: [[0.558, 0.735], [0.692, 0.735], [0.772, 0.988], [0.605, 0.988]], cap: [0.628, 0.755, 0.042, 0.040] },
+      joints: {
+        nh: [0.375, 0.625, 0.282, 0.805, 0.285, 0.945, 0.375, 0.625, -0.44, 0.02, 1.0],
+        fh: [0.375, 0.625, 0.282, 0.805, 0.285, 0.945, 0.468, 0.630, -0.26, 0.14, 1.0],
+        nf: [0.615, 0.615, 0.628, 0.755, 0.695, 0.945, 0.615, 0.615,  0.12, 0.30, 1.04],
+        ff: [0.615, 0.615, 0.628, 0.755, 0.695, 0.945, 0.742, 0.625,  0.38, 0.44, 1.0],
+      },
+    },
+    hundun: {
+      sink: 13, farSc: 0.93, shade: 'rgba(18, 10, 32, 0.28)',
+      foreKeys: TIGER_FORE_KEYS, hindKeys: TIGER_HIND_KEYS, bodyKeys: TIGER_BODY_KEYS,
+      farWing: { pts: [[0.535, 0], [1.0, 0], [1.0, 0.52], [0.895, 0.52], [0.855, 0.44], [0.745, 0.42], [0.585, 0.45]], piv: [0.675, 0.425], amp: -0.11 },
+      wings: { pts: [[0.05, 0], [0.615, 0], [0.625, 0.595], [0.455, 0.595], [0.255, 0.602], [0.05, 0.45]], piv: [0.575, 0.525], amp: 0.13 },
+      tail: { pts: [[0, 0.600], [0.445, 0.600], [0.442, 0.685], [0.352, 0.730], [0.322, 0.865], [0, 0.885]], piv: [0.425, 0.635], amp: 0.12 },
+      body: [[0.420, 0.590], [0.585, 0.555], [0.605, 0.305], [0.755, 0.275], [0.855, 0.315], [0.915, 0.395], [0.955, 0.500], [0.935, 0.635], [0.840, 0.635], [0.822, 0.725], [0.762, 0.782], [0.702, 0.755], [0.615, 0.745], [0.545, 0.728], [0.475, 0.715], [0.415, 0.665]],
+      cap: [[0.605, 0.465], [0.762, 0.465], [0.755, 0.675], [0.685, 0.685], [0.608, 0.645]],
+      nhUp: { pts: [[0.345, 0.725], [0.435, 0.600], [0.518, 0.675], [0.492, 0.795], [0.405, 0.865], [0.345, 0.845]], cap: [0.378, 0.835, 0.038, 0.040] },
+      nhLo: { pts: [[0.325, 0.815], [0.415, 0.825], [0.425, 0.992], [0.325, 0.992]], cap: [0.378, 0.835, 0.035, 0.036] },
+      nfUp: { pts: [[0.585, 0.615], [0.722, 0.605], [0.710, 0.785], [0.585, 0.785]], cap: [0.652, 0.765, 0.042, 0.042] },
+      nfLo: { pts: [[0.595, 0.745], [0.715, 0.745], [0.768, 0.942], [0.665, 0.942]], cap: [0.652, 0.765, 0.038, 0.038] },
+      joints: {
+        nh: [0.455, 0.665, 0.378, 0.835, 0.382, 0.960, 0.455, 0.665, -0.42, 0.02, 1.0],
+        fh: [0.455, 0.665, 0.378, 0.835, 0.382, 0.960, 0.538, 0.672, -0.24, 0.14, 1.0],
+        nf: [0.655, 0.635, 0.652, 0.765, 0.725, 0.905, 0.655, 0.652,  0.08, 0.32, 1.09],
+        ff: [0.655, 0.635, 0.652, 0.765, 0.725, 0.905, 0.768, 0.668,  0.38, 0.42, 1.06],
+      },
+    },
+    taotie: {
+      sink: 11, farSc: 0.91, shade: 'rgba(16, 10, 22, 0.30)',
+      foreKeys: BEHEMOTH_FORE_KEYS, hindKeys: BEHEMOTH_HIND_KEYS, bodyKeys: BEHEMOTH_BODY_KEYS,
+      tail: { pts: [[0, 0.18], [0.295, 0.18], [0.295, 0.595], [0.225, 0.655], [0, 0.665]], piv: [0.275, 0.535], amp: 0.16 },
+      body: [[0.275, 0.40], [0.35, 0.28], [0.35, 0], [1.0, 0], [1.0, 0.66], [0.845, 0.66], [0.815, 0.695], [0.745, 0.745], [0.675, 0.745], [0.625, 0.665], [0.495, 0.685], [0.435, 0.685], [0.355, 0.645], [0.275, 0.585]],
+      cap: [[0.455, 0.295], [0.655, 0.295], [0.650, 0.615], [0.555, 0.635], [0.460, 0.585]],
+      hipCap: [[0.268, 0.355], [0.415, 0.355], [0.412, 0.645], [0.335, 0.655], [0.272, 0.585]],
+      nhUp: { pts: [[0.235, 0.665], [0.315, 0.565], [0.415, 0.635], [0.385, 0.765], [0.305, 0.815], [0.215, 0.795]], cap: [0.258, 0.785, 0.044, 0.046] },
+      nhLo: { pts: [[0.172, 0.690], [0.308, 0.765], [0.315, 0.995], [0.185, 0.995]], cap: [0.258, 0.785, 0.040, 0.042] },
+      nfUp: { pts: [[0.445, 0.565], [0.605, 0.565], [0.635, 0.785], [0.495, 0.805], [0.445, 0.695]], cap: [0.575, 0.765, 0.052, 0.052] },
+      nfLo: { pts: [[0.495, 0.745], [0.642, 0.740], [0.708, 0.992], [0.545, 0.992]], cap: [0.575, 0.765, 0.048, 0.048] },
+      joints: {
+        nh: [0.335, 0.625, 0.258, 0.785, 0.258, 0.955, 0.335, 0.625, -0.42,  0.00, 1.0],
+        fh: [0.335, 0.625, 0.258, 0.785, 0.258, 0.955, 0.448, 0.632, -0.24,  0.14, 1.0],
+        nf: [0.525, 0.595, 0.575, 0.765, 0.638, 0.935, 0.525, 0.595,  0.22,  0.32, 1.04],
+        ff: [0.525, 0.595, 0.575, 0.765, 0.638, 0.935, 0.715, 0.618,  0.42,  0.46, 1.0],
+      },
+    },
+    taowu: {
+      sink: 12, farSc: 0.91, shade: 'rgba(18, 12, 8, 0.32)',
+      foreKeys: BEHEMOTH_FORE_KEYS, hindKeys: BEHEMOTH_HIND_KEYS, bodyKeys: BEHEMOTH_BODY_KEYS,
+      tail: { pts: [[0, 0.12], [0.365, 0.12], [0.365, 0.625], [0.312, 0.665], [0.282, 0.755], [0, 0.775]], piv: [0.345, 0.555], amp: 0.15 },
+      body: [[0.345, 0.36], [0.48, 0.28], [0.50, 0], [1.0, 0], [1.0, 0.73], [0.875, 0.73], [0.850, 0.675], [0.775, 0.728], [0.705, 0.728], [0.655, 0.645], [0.535, 0.675], [0.465, 0.665], [0.385, 0.625], [0.345, 0.615]],
+      cap: [[0.512, 0.245], [0.718, 0.245], [0.712, 0.585], [0.615, 0.605], [0.515, 0.555]],
+      hipCap: [[0.348, 0.365], [0.485, 0.365], [0.478, 0.635], [0.405, 0.635], [0.348, 0.585]],
+      nhUp: { pts: [[0.315, 0.655], [0.365, 0.515], [0.472, 0.585], [0.455, 0.745], [0.395, 0.805], [0.305, 0.785]], cap: [0.355, 0.775, 0.044, 0.046] },
+      nhLo: { pts: [[0.282, 0.755], [0.405, 0.765], [0.408, 0.965], [0.282, 0.965]], cap: [0.355, 0.775, 0.040, 0.042] },
+      nfUp: { pts: [[0.495, 0.565], [0.658, 0.565], [0.682, 0.795], [0.555, 0.805], [0.495, 0.685]], cap: [0.632, 0.775, 0.052, 0.052] },
+      nfLo: { pts: [[0.565, 0.750], [0.698, 0.750], [0.752, 0.995], [0.585, 0.995]], cap: [0.632, 0.775, 0.048, 0.048] },
+      joints: {
+        nh: [0.405, 0.605, 0.355, 0.775, 0.348, 0.925, 0.405, 0.605, -0.32, -0.02, 1.0],
+        fh: [0.405, 0.605, 0.355, 0.775, 0.348, 0.925, 0.495, 0.612, -0.18,  0.12, 1.0],
+        nf: [0.585, 0.585, 0.632, 0.775, 0.675, 0.945, 0.585, 0.585,  0.20,  0.24, 1.04],
+        ff: [0.585, 0.585, 0.632, 0.775, 0.675, 0.945, 0.745, 0.610,  0.40,  0.44, 1.0],
+      },
+    },
+  };
+
+  // 展翼神禽（朱雀/鲲鹏）无缝肩轴鼓翼与独立凤尾/孔雀翎分件表
+  const BIRD_BEAST_SPECS = {
+    zhuque: {
+      rightWing: { pts: [[0.680, 0], [1.0, 0], [1.0, 0.58], [0.665, 0.58], [0.680, 0.36]], piv: [0.725, 0.465], cap: [0.725, 0.465, 0.055, 0.055] },
+      leftWing:  { pts: [[0.08, 0], [0.595, 0], [0.605, 0.455], [0.585, 0.555], [0.415, 0.545], [0.355, 0.482], [0.255, 0.422], [0.155, 0.342], [0.08, 0.15]], piv: [0.555, 0.465], cap: [0.555, 0.465, 0.055, 0.055] },
+      tail:      { pts: [[0, 0.362], [0.24, 0.425], [0.35, 0.482], [0.46, 0.515], [0.565, 0.525], [0.520, 0.778], [0.715, 0.778], [0.715, 1.0], [0, 1.0]], piv: [0.485, 0.595] },
+      body:      [[0.47, 0.20], [0.79, 0.20], [0.79, 0.40], [0.752, 0.568], [0.705, 0.778], [0.515, 0.778], [0.510, 0.535], [0.45, 0.44]],
+      cap:       [[0.535, 0.385], [0.665, 0.385], [0.665, 0.575], [0.535, 0.575]],
+    },
+    kunpeng: {
+      rightWing: { pts: [[0.625, 0.04], [1.0, 0.04], [1.0, 0.475], [0.855, 0.52], [0.625, 0.52]], piv: [0.705, 0.465], cap: [0.705, 0.465, 0.055, 0.055] },
+      leftWing:  { pts: [[0.20, 0], [0.665, 0], [0.668, 0.465], [0.652, 0.605], [0.500, 0.602], [0.380, 0.478], [0.20, 0.35]], piv: [0.625, 0.535], cap: [0.625, 0.535, 0.055, 0.055] },
+      tail:      { pts: [[0, 0.505], [0.385, 0.505], [0.535, 0.575], [0.555, 0.675], [0.492, 0.855], [0.472, 1.0], [0, 1.0]], piv: [0.505, 0.655] },
+      body:      [[0.625, 0.440], [1.0, 0.450], [1.0, 0.745], [0.825, 0.765], [0.765, 0.895], [0.488, 0.985], [0.492, 0.850], [0.522, 0.665], [0.502, 0.585], [0.625, 0.555]],
+      cap:       [[0.635, 0.448], [0.778, 0.448], [0.768, 0.665], [0.648, 0.645]],
+    },
+  };
+
+  function getCleanQuadBeastParts(beastId, img) {
+    const spec = QUAD_BEAST_SPECS[beastId];
+    if (!spec || !img) return null;
+    const iw = img.naturalWidth || img.width || 0;
+    const ih = img.naturalHeight || img.height || 0;
+    if (iw < 16 || ih < 16) return null;
+    const ck = `quad_v3|${beastId}|${iw}x${ih}`;
+    if (beastPartsCache[ck]) return beastPartsCache[ck];
+
+    const cnh1 = spec.nhUp.cap, cnh2 = spec.nhLo.cap;
+    const cnf1 = spec.nfUp.cap, cnf2 = spec.nfLo.cap;
+    const cleanBody = clipPolyPart(img, iw, ih, spec.body, null);
+    const pauldronCap = spec.cap ? clipPolyPart(img, iw, ih, spec.cap, null) : null;
+    const hipCap = spec.hipCap ? clipPolyPart(img, iw, ih, spec.hipCap, null) : null;
+    const wings = spec.wings ? clipPolyPart(img, iw, ih, spec.wings.pts, null) : null;
+    const farWing = spec.farWing ? clipPolyPart(img, iw, ih, spec.farWing.pts, null) : null;
+    const tail = spec.tail ? clipPolyPart(img, iw, ih, spec.tail.pts, null) : null;
+
+    const nhUpper = clipLimbWithJointCap(img, iw, ih, spec.nhUp.pts, cnh1[0], cnh1[1], cnh1[2], cnh1[3], null);
+    const nhLower = clipLimbWithJointCap(img, iw, ih, spec.nhLo.pts, cnh2[0], cnh2[1], cnh2[2], cnh2[3], null);
+    const fhUpper = clipLimbWithJointCap(img, iw, ih, spec.nhUp.pts, cnh1[0], cnh1[1], cnh1[2], cnh1[3], spec.shade);
+    const fhLower = clipLimbWithJointCap(img, iw, ih, spec.nhLo.pts, cnh2[0], cnh2[1], cnh2[2], cnh2[3], spec.shade);
+    const nfUpper = clipLimbWithJointCap(img, iw, ih, spec.nfUp.pts, cnf1[0], cnf1[1], cnf1[2], cnf1[3], null);
+    const nfLower = clipLimbWithJointCap(img, iw, ih, spec.nfLo.pts, cnf2[0], cnf2[1], cnf2[2], cnf2[3], null);
+    const ffUpper = clipLimbWithJointCap(img, iw, ih, spec.nfUp.pts, cnf1[0], cnf1[1], cnf1[2], cnf1[3], spec.shade);
+    const ffLower = clipLimbWithJointCap(img, iw, ih, spec.nfLo.pts, cnf2[0], cnf2[1], cnf2[2], cnf2[3], spec.shade);
+
+    if (!cleanBody || !nhUpper || !nhLower || !nfUpper || !nfLower || !ffUpper || !ffLower) return null;
+    beastPartsCache[ck] = {
+      cleanBody, pauldronCap, hipCap, wings, farWing, tail,
+      nhUpper, nhLower, fhUpper, fhLower, nfUpper, nfLower, ffUpper, ffLower,
+    };
+    return beastPartsCache[ck];
+  }
+
+  function getCleanBirdBeastParts(beastId, img) {
+    const spec = BIRD_BEAST_SPECS[beastId];
+    if (!spec || !img) return null;
+    const iw = img.naturalWidth || img.width || 0;
+    const ih = img.naturalHeight || img.height || 0;
+    if (iw < 16 || ih < 16) return null;
+    const ck = `bird_v3|${beastId}|${iw}x${ih}`;
+    if (beastPartsCache[ck]) return beastPartsCache[ck];
+
+    const rc = spec.rightWing.cap, lc = spec.leftWing.cap;
+    const rightWing = clipLimbWithJointCap(img, iw, ih, spec.rightWing.pts, rc[0], rc[1], rc[2], rc[3], null);
+    const leftWing = clipLimbWithJointCap(img, iw, ih, spec.leftWing.pts, lc[0], lc[1], lc[2], lc[3], null);
+    const tail = clipPolyPart(img, iw, ih, spec.tail.pts, null);
+    const body = clipPolyPart(img, iw, ih, spec.body, null);
+    const cap = spec.cap ? clipPolyPart(img, iw, ih, spec.cap, null) : null;
+    if (!rightWing || !leftWing || !tail || !body) return null;
+    beastPartsCache[ck] = { rightWing, leftWing, tail, body, cap };
+    return beastPartsCache[ck];
+  }
+
+  function getCleanQinglongParts(img) {
+    if (!img) return null;
+    const iw = img.naturalWidth || img.width || 0;
+    const ih = img.naturalHeight || img.height || 0;
+    if (iw < 16 || ih < 16) return null;
+    const isPearl = iw >= 220;
+    const ck = `qinglong_v3|${iw}x${ih}`;
+    if (beastPartsCache[ck]) return beastPartsCache[ck];
+
+    if (isPearl) {
+      const ffClaw = clipLimbWithJointCap(img, iw, ih, [[0.822, 0.455], [1.0, 0.455], [1.0, 0.725], [0.818, 0.725]], 0.830, 0.660, 0.035, 0.035, null);
+      const nfClaw = clipLimbWithJointCap(img, iw, ih, [[0.650, 0.560], [0.765, 0.560], [0.798, 0.715], [0.798, 0.775], [0.705, 0.775], [0.650, 0.665]], 0.705, 0.585, 0.035, 0.035, null);
+      const fhLeg = clipLimbWithJointCap(img, iw, ih, [[0.398, 0.585], [0.535, 0.585], [0.535, 0.825], [0.435, 0.825], [0.398, 0.705]], 0.430, 0.610, 0.040, 0.040, 'rgba(12, 32, 28, 0.18)');
+      const nhLeg = clipLimbWithJointCap(img, iw, ih, [[0.235, 0.615], [0.395, 0.605], [0.395, 0.825], [0.355, 0.995], [0.235, 0.995]], 0.350, 0.635, 0.042, 0.042, null);
+      const hipCap = clipPolyPart(img, iw, ih, [[0.305, 0.485], [0.435, 0.485], [0.425, 0.635], [0.315, 0.645]], null);
+      const cleanBody = clipImageWithHoles(img, iw, ih, [[0, 0], [1, 0], [1, 1], [0, 1]], [
+        [[0.826, 0.450], [1.0, 0.450], [1.0, 0.730], [0.826, 0.730]],
+        [[0.402, 0.615], [0.538, 0.615], [0.538, 0.828], [0.402, 0.828]],
+        [[0.305, 0.785], [0.345, 0.685], [0.396, 0.685], [0.396, 1.0], [0.235, 1.0], [0.235, 0.805]],
+      ], null);
+      if (!cleanBody || !ffClaw || !nfClaw || !fhLeg || !nhLeg || !hipCap) return null;
+      beastPartsCache[ck] = { isPearl: true, cleanBody, ffClaw, nfClaw, fhLeg, nhLeg, hipCap };
+      return beastPartsCache[ck];
+    }
+
+    const nfClaw = clipLimbWithJointCap(img, iw, ih, [[0.555, 0.700], [0.675, 0.700], [0.768, 0.855], [0.768, 1.0], [0.625, 1.0], [0.555, 0.825]], 0.635, 0.735, 0.042, 0.042, null);
+    const ffClaw = clipLimbWithJointCap(img, iw, ih, [[0.805, 0.605], [1.0, 0.605], [1.0, 0.825], [0.798, 0.825]], 0.815, 0.755, 0.038, 0.038, null);
+    const cleanBody = clipImageWithHoles(img, iw, ih, [[0, 0], [1, 0], [1, 1], [0, 1]], [
+      [[0.585, 0.835], [0.768, 0.842], [0.768, 1.0], [0.615, 1.0]],
+      [[0.825, 0.600], [1.0, 0.600], [1.0, 0.825], [0.822, 0.815]],
+    ], null);
+    if (!cleanBody || !nfClaw || !ffClaw) return null;
+    beastPartsCache[ck] = { isPearl: false, cleanBody, nfClaw, ffClaw, nfPiv: [0.635, 0.735], ffPiv: [0.815, 0.755] };
+    return beastPartsCache[ck];
+  }
+
+  function getCleanZhulongParts(img) {
+    if (!img) return null;
+    const iw = img.naturalWidth || img.width || 0;
+    const ih = img.naturalHeight || img.height || 0;
+    if (iw < 16 || ih < 16) return null;
+    const isBipedWinged = ih > iw * 0.88;
+    const ck = `zhulong_v3|${iw}x${ih}`;
+    if (beastPartsCache[ck]) return beastPartsCache[ck];
+
+    if (isBipedWinged) {
+      const farWing = clipLimbWithJointCap(img, iw, ih, [[0.41, 0.00], [0.84, 0.00], [0.84, 0.285], [0.60, 0.32], [0.41, 0.18]], 0.625, 0.265, 0.045, 0.045, null);
+      const nearWing = clipLimbWithJointCap(img, iw, ih, [[0.00, 0.00], [0.595, 0.00], [0.595, 0.420], [0.575, 0.585], [0.362, 0.585], [0.345, 0.465], [0.255, 0.455], [0.185, 0.505], [0.08, 0.42], [0.00, 0.38]], 0.555, 0.445, 0.045, 0.045, null);
+      const tail = clipLimbWithJointCap(img, iw, ih, [[0.05, 0.480], [0.345, 0.475], [0.355, 0.595], [0.475, 0.595], [0.465, 0.785], [0.410, 0.895], [0.355, 0.928], [0.05, 0.928]], 0.445, 0.725, 0.040, 0.040, null);
+      const sunArm = clipLimbWithJointCap(img, iw, ih, [[0.755, 0.455], [1.0, 0.455], [1.0, 0.675], [0.755, 0.675]], 0.775, 0.615, 0.038, 0.038, null);
+      const clawArm = clipLimbWithJointCap(img, iw, ih, [[0.595, 0.545], [0.715, 0.545], [0.808, 0.685], [0.808, 0.762], [0.695, 0.762], [0.595, 0.655]], 0.635, 0.575, 0.042, 0.042, null);
+      const cap = clipPolyPart(img, iw, ih, [[0.542, 0.412], [0.718, 0.412], [0.715, 0.580], [0.552, 0.572]], null);
+      const nhUp = clipLimbWithJointCap(img, iw, ih, [[0.430, 0.625], [0.580, 0.625], [0.580, 0.790], [0.515, 0.855], [0.410, 0.845]], 0.462, 0.825, 0.048, 0.045, null);
+      const nhLo = clipLimbWithJointCap(img, iw, ih, [[0.395, 0.805], [0.515, 0.815], [0.522, 0.998], [0.365, 0.998]], 0.462, 0.825, 0.044, 0.042, null);
+      const fhUp = clipLimbWithJointCap(img, iw, ih, [[0.580, 0.685], [0.720, 0.695], [0.742, 0.818], [0.595, 0.835]], 0.655, 0.815, 0.046, 0.042, 'rgba(18, 8, 6, 0.20)');
+      const fhLo = clipLimbWithJointCap(img, iw, ih, [[0.585, 0.795], [0.720, 0.805], [0.798, 0.962], [0.600, 0.962]], 0.655, 0.815, 0.042, 0.038, 'rgba(18, 8, 6, 0.20)');
+      const cleanBody = clipPolyPart(img, iw, ih, [
+        [0.585, 0.255], [0.655, 0.160], [0.712, 0.215], [0.748, 0.190],
+        [0.815, 0.250], [0.862, 0.345], [0.862, 0.455], [0.805, 0.475],
+        [0.785, 0.665], [0.725, 0.705], [0.595, 0.715], [0.475, 0.675],
+        [0.455, 0.585], [0.545, 0.555], [0.555, 0.365],
+      ], null);
+      if (!farWing || !nearWing || !tail || !sunArm || !clawArm || !cap || !nhUp || !nhLo || !fhUp || !fhLo || !cleanBody) return null;
+      beastPartsCache[ck] = { isBipedWinged: true, farWing, nearWing, tail, sunArm, clawArm, cap, nhUp, nhLo, fhUp, fhLo, cleanBody };
+      return beastPartsCache[ck];
+    }
+
+    const nfClaw = clipLimbWithJointCap(img, iw, ih, [[0.555, 0.700], [0.705, 0.700], [0.768, 0.865], [0.768, 1.0], [0.625, 1.0], [0.555, 0.825]], 0.655, 0.745, 0.045, 0.045, null);
+    const ffClaw = clipLimbWithJointCap(img, iw, ih, [[0.805, 0.775], [0.978, 0.775], [0.978, 0.960], [0.805, 0.960]], 0.818, 0.825, 0.038, 0.038, null);
+    const cleanBody = clipImageWithHoles(img, iw, ih, [[0, 0], [1, 0], [1, 1], [0, 1]], [
+      [[0.585, 0.845], [0.770, 0.848], [0.770, 1.0], [0.620, 1.0]],
+      [[0.825, 0.775], [0.980, 0.775], [0.980, 0.962], [0.822, 0.955]],
+      [[0.215, 0.608], [0.258, 0.675], [0.275, 0.765], [0.228, 0.812], [0.202, 0.725]],
+    ], null);
+    if (!cleanBody || !nfClaw || !ffClaw) return null;
+    beastPartsCache[ck] = { isBipedWinged: false, cleanBody, nfClaw, ffClaw, nfPiv: [0.655, 0.745], ffPiv: [0.818, 0.825] };
+    return beastPartsCache[ck];
+  }
+
   function drawPaintedPivotPart(ctx, partCvs, w, h, pivRx, pivRy, tx, ty, rotRad, scaleY) {
     ctx.save();
     ctx.translate(tx, ty);
@@ -3847,11 +4186,13 @@
     ctx.restore();
   }
 
-  function drawPaintedTwoBoneLimb(ctx, upperCvs, lowerCvs, w, h, piv1Rx, piv1Ry, piv2Rx, piv2Ry, endRx, endRy, keys, mountX, mountY, phase, mb, idleA1, idleA2, liftPx, shrink1, lowerSy) {
-    const restDx1 = (piv2Rx - piv1Rx) * w, restDy1 = (piv2Ry - piv1Ry) * h;
+  function drawPaintedTwoBoneLimb(ctx, upperCvs, lowerCvs, w, h, piv1Rx, piv1Ry, piv2Rx, piv2Ry, endRx, endRy, keys, mountX, mountY, phase, mb, idleA1, idleA2, liftPx, shrink1, lowerSy, limbSc) {
+    const ls = limbSc || 1;
+    const lw = w * ls, lh = h * ls;
+    const restDx1 = (piv2Rx - piv1Rx) * lw, restDy1 = (piv2Ry - piv1Ry) * lh;
     const restA1 = Math.atan2(restDx1, restDy1);
     const len1 = Math.hypot(restDx1, restDy1);
-    const restA2 = Math.atan2((endRx - piv2Rx) * w, (endRy - piv2Ry) * h);
+    const restA2 = Math.atan2((endRx - piv2Rx) * lw, (endRy - piv2Ry) * lh);
 
     let a1 = idleA1, a2 = idleA2, lift = 0;
     if (mb > 0.001) {
@@ -3865,10 +4206,342 @@
     const p1y = mountY - lift * liftPx;
     const s1 = 1 - lift * shrink1;
     // Canvas2D 中向 +X（前方）抬腿对应逆时针旋转 -(a - restA)
-    drawPaintedPivotPart(ctx, upperCvs, w, h, piv1Rx, piv1Ry, p1x, p1y, -(a1 - restA1), s1);
+    drawPaintedPivotPart(ctx, upperCvs, lw, lh, piv1Rx, piv1Ry, p1x, p1y, -(a1 - restA1), s1);
     const p2x = p1x + Math.sin(a1) * len1 * s1;
     const p2y = p1y + Math.cos(a1) * len1 * s1;
-    drawPaintedPivotPart(ctx, lowerCvs, w, h, piv2Rx, piv2Ry, p2x, p2y, -(a2 - restA2), lowerSy || 1);
+    drawPaintedPivotPart(ctx, lowerCvs, lw, lh, piv2Rx, piv2Ry, p2x, p2y, -(a2 - restA2), lowerSy || 1);
+  }
+
+  // ★ 六大四足圣兽（麒麟/白泽/穷奇/混沌/饕餮/梼杌）真双骨骼四拍奔腾渲染器
+  function drawArticulatedQuadBeast(ctx, beastId, spr, w, h, moving, runPhase, hitFlash, pose, mb, recoil, time, idlePhase) {
+    const spec = QUAD_BEAST_SPECS[beastId];
+    const parts = getCleanQuadBeastParts(beastId, spr);
+    const sc = w / 146;
+    const leftX = -w * 0.5;
+    const sink = (spec && spec.sink != null) ? spec.sink : 14;
+    const baseTopY = -h + sink * sc;
+    if (!spec || !parts) {
+      if (spr) ctx.drawImage(spr, leftX, baseTopY, w, h);
+      return { topY: baseTopY };
+    }
+
+    const quadMove = (moving && !pose.active) ? clamp01(mb) : 0;
+    const breath = Math.sin((time || 0) * 3.1 + idlePhase);
+    const bSample = quadMove > 0.001 ? evalPeriodicSpline(spec.bodyKeys, runPhase, _gallopSample) : null;
+    const bobY = (bSample ? bSample[0] * quadMove : 0) * sc + (1 - quadMove) * breath * 0.6;
+    const pitch = (bSample ? bSample[1] * quadMove : 0) + (pose.bodyPitch || 0) * 0.76 - recoil * 0.08;
+    const surgeX = (bSample ? bSample[2] * quadMove : 0) * sc - recoil * 2.2;
+    const atkStrike = pose.active ? Math.sin(clamp01(pose.p) * Math.PI) : 0;
+
+    ctx.save();
+    if (pose.afterimage > 0.18 && hitFlash <= 0) {
+      ctx.save();
+      ctx.globalAlpha = pose.afterimage * 0.28;
+      ctx.drawImage(spr, leftX - 12, baseTopY + bobY, w, h);
+      ctx.restore();
+    }
+
+    const pvy = -h * 0.32;
+    ctx.translate(surgeX, bobY + pvy);
+    ctx.rotate(pitch);
+    ctx.scale(pose.scaleX || 1, pose.scaleY || 1);
+    ctx.translate(0, -pvy);
+
+    if (parts.farWing && spec.farWing) {
+      const fwp = spec.farWing.piv;
+      const fwAng = quadMove > 0.001
+        ? Math.sin(runPhase - 0.6) * spec.farWing.amp * quadMove
+        : Math.sin((time || 0) * 3.2 + idlePhase + 0.8) * (spec.farWing.amp * 0.32);
+      drawPaintedPivotPart(ctx, parts.farWing, w, h, fwp[0], fwp[1], leftX + w * fwp[0], baseTopY + h * fwp[1], fwAng, 1);
+    }
+
+    const j = spec.joints;
+    const fSc = spec.farSc || 0.93;
+    const fh = j.fh, ff = j.ff, nh = j.nh, nf = j.nf;
+
+    // 1. 远侧后肢 + 远侧前肢
+    drawPaintedTwoBoneLimb(
+      ctx, parts.fhUpper, parts.fhLower, w, h,
+      fh[0], fh[1], fh[2], fh[3], fh[4], fh[5], spec.hindKeys,
+      leftX + w * fh[6], baseTopY + h * fh[7], runPhase + 0.14 * HORSE_TAU, quadMove,
+      fh[8] - atkStrike * 0.12, fh[9], 3.8 * sc, 0.14, fh[10], fSc
+    );
+    drawPaintedTwoBoneLimb(
+      ctx, parts.ffUpper, parts.ffLower, w, h,
+      ff[0], ff[1], ff[2], ff[3], ff[4], ff[5], spec.foreKeys,
+      leftX + w * ff[6], baseTopY + h * ff[7], runPhase - 0.17 * HORSE_TAU, quadMove,
+      ff[8] + atkStrike * 0.24, ff[9] - atkStrike * 0.14, 2.2 * sc, 0.08, ff[10], fSc
+    );
+
+    // 2. 独立流火尾/仙翎尾/流星锤骨尾随奔跑节拍摆动
+    if (parts.tail && spec.tail) {
+      const tp = spec.tail.piv;
+      const tAng = quadMove > 0.001
+        ? Math.sin(runPhase - 0.9) * spec.tail.amp * quadMove
+        : Math.sin((time || 0) * 2.8 + idlePhase) * (spec.tail.amp * 0.36);
+      drawPaintedPivotPart(ctx, parts.tail, w, h, tp[0], tp[1], leftX + w * tp[0], baseTopY + h * tp[1], tAng, 1);
+    }
+
+    // 3. 近侧后肢 + 臀甲/灵焰盖片 + 近侧双翼 + 净身原画圣兽躯干
+    drawPaintedTwoBoneLimb(
+      ctx, parts.nhUpper, parts.nhLower, w, h,
+      nh[0], nh[1], nh[2], nh[3], nh[4], nh[5], spec.hindKeys,
+      leftX + w * nh[6], baseTopY + h * nh[7], runPhase, quadMove,
+      nh[8] - atkStrike * 0.16, nh[9], 3.8 * sc, 0.14, nh[10], 1.0
+    );
+    if (parts.hipCap) {
+      ctx.drawImage(parts.hipCap, leftX, baseTopY, w, h);
+    }
+    if (parts.wings && spec.wings) {
+      const wp = spec.wings.piv;
+      const wAng = quadMove > 0.001
+        ? Math.sin(runPhase - 0.6) * spec.wings.amp * quadMove
+        : Math.sin((time || 0) * 3.2 + idlePhase) * (spec.wings.amp * 0.32);
+      drawPaintedPivotPart(ctx, parts.wings, w, h, wp[0], wp[1], leftX + w * wp[0], baseTopY + h * wp[1], wAng, 1);
+    }
+
+    ctx.drawImage(parts.cleanBody, leftX, baseTopY, w, h);
+
+    // 4. 近侧前肢挥踏 + 黄金肩吞甲/肩焰盖片无缝叠合
+    drawPaintedTwoBoneLimb(
+      ctx, parts.nfUpper, parts.nfLower, w, h,
+      nf[0], nf[1], nf[2], nf[3], nf[4], nf[5], spec.foreKeys,
+      leftX + w * nf[6], baseTopY + h * nf[7], runPhase, quadMove,
+      nf[8] + atkStrike * 0.34, nf[9] - atkStrike * 0.18, 2.2 * sc, 0.08, nf[10], 1.0
+    );
+    if (parts.pauldronCap) {
+      ctx.drawImage(parts.pauldronCap, leftX, baseTopY, w, h);
+    }
+
+    if (hitFlash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.46;
+      ctx.drawImage(parts.cleanBody, leftX, baseTopY, w, h);
+    }
+    ctx.restore();
+    return { topY: baseTopY };
+  }
+
+  // ★ 展翼神禽（朱雀/鲲鹏）真肩轴双翼鼓翼 + 独立长尾流翎渲染器
+  function drawArticulatedBirdBeast(ctx, beastId, spr, w, h, bSc, flapCycle, mb, hitFlash, pose, time) {
+    const spec = BIRD_BEAST_SPECS[beastId];
+    const parts = getCleanBirdBeastParts(beastId, spr);
+    const leftX = -w * 0.5;
+    const baseTopY = -h + 14 * bSc;
+    const flapSin = Math.sin(flapCycle);
+    const wingAng = flapSin * (0.24 + mb * 0.13);
+
+    if (pose.afterimage > 0.18 && hitFlash <= 0 && spr) {
+      ctx.save();
+      ctx.globalAlpha = pose.afterimage * 0.32;
+      ctx.drawImage(spr, leftX - 14, baseTopY, w, h);
+      ctx.restore();
+    }
+
+    ctx.save();
+    const pvy = baseTopY + h * 0.46;
+    ctx.translate(0, pvy);
+    ctx.rotate((pose.bodyPitch || 0) * 0.8 + mb * 0.065 + Math.cos(flapCycle) * 0.032);
+    ctx.scale(pose.scaleX || 1, pose.scaleY || 1);
+    ctx.translate(0, -pvy);
+
+    if (spec && parts) {
+      const rwp = spec.rightWing.piv;
+      const lwp = spec.leftWing.piv;
+      const tp = spec.tail.piv;
+      const wingSy = 1 - Math.abs(flapSin) * 0.06;
+      const tailAng = Math.sin(flapCycle - 1.1) * (0.07 + mb * 0.10);
+
+      drawPaintedPivotPart(ctx, parts.rightWing, w, h, rwp[0], rwp[1], leftX + w * rwp[0], baseTopY + h * rwp[1], -wingAng * 0.90, wingSy);
+      drawPaintedPivotPart(ctx, parts.tail, w, h, tp[0], tp[1], leftX + w * tp[0], baseTopY + h * tp[1], tailAng, 1);
+      ctx.drawImage(parts.body, leftX, baseTopY, w, h);
+      if (parts.cap) ctx.drawImage(parts.cap, leftX, baseTopY, w, h);
+      drawPaintedPivotPart(ctx, parts.leftWing, w, h, lwp[0], lwp[1], leftX + w * lwp[0], baseTopY + h * lwp[1], wingAng, wingSy);
+    } else if (spr) {
+      ctx.drawImage(spr, leftX, baseTopY, w, h);
+    }
+
+    if (hitFlash > 0 && spr) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.48;
+      ctx.drawImage(parts ? parts.body : spr, leftX, baseTopY, w, h);
+    }
+    ctx.restore();
+
+    // 振翅飘散离火星羽（朱雀）或北冥寒溟流羽（鲲鹏）
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const isKunpeng = beastId === 'kunpeng';
+    for (let e = 0; e < 4; e++) {
+      const pEm = (((time || 0) * 1.6 + e * 0.25) % 1);
+      ctx.globalAlpha = (1 - pEm) * 0.72;
+      ctx.fillStyle = isKunpeng
+        ? (e % 2 === 0 ? '#7dd3fc' : '#fde047')
+        : (e % 2 === 0 ? '#fde047' : '#fb923c');
+      ctx.beginPath();
+      ctx.arc((-18 - pEm * 44) * bSc, (-44 - e * 11 + Math.sin((time || 0) * 8 + e) * 6) * bSc, 3.2 * (1 - pEm * 0.5) * Math.min(1.45, bSc), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    return { topY: baseTopY };
+  }
+
+  // ★ 苍穹游龙（青龙 & 盘身态烛龙）：无缝S形游龙推进波 + 100%刚性昂首龙颜 + 独立龙爪划空踏云
+  function drawSerpentineDragon(ctx, spr, parts, w, h, bSc, t, runPhase, mb, hitFlash, pose) {
+    const leftX = -w * 0.5;
+    const baseTopY = -h + 15 * bSc;
+    if (!parts || !spr) {
+      if (spr) ctx.drawImage(spr, leftX, baseTopY, w, h);
+      return { topY: baseTopY };
+    }
+
+    const phase = t * (4.2 + mb * 3.2) + (runPhase || 0) * 0.68;
+    const headBob = Math.sin(phase) * (2.2 + mb * 3.0) * bSc;
+    const neckSplit = parts.isPearl ? 0.62 : 0.63;
+    const waveX = (r) => {
+      if (r >= neckSplit) return 0;
+      const u = (neckSplit - r) / neckSplit;
+      const env = (u * u) * (3 - 2 * u) * 0.74 + u * 0.32;
+      return Math.cos(phase - u * 4.6) * (0.8 + mb * 2.1) * bSc * env;
+    };
+    const waveY = (r) => {
+      if (r >= neckSplit) return headBob;
+      const u = (neckSplit - r) / neckSplit;
+      const env = (u * u) * (3 - 2 * u) * 0.74 + u * 0.32;
+      return headBob + Math.sin(phase - u * 5.4) * (3.6 + mb * 8.0 + (pose.active ? 2.2 : 0)) * bSc * env;
+    };
+
+    if (pose.afterimage > 0.18 && hitFlash <= 0) {
+      ctx.save();
+      ctx.globalAlpha = pose.afterimage * 0.30;
+      ctx.drawImage(spr, leftX - 14 * bSc, baseTopY, w, h);
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.rotate((pose.bodyPitch || 0) * 0.72);
+    ctx.scale(pose.scaleX || 1, pose.scaleY || 1);
+
+    const strikeClaw = pose.active ? Math.sin(clamp01(pose.p) * Math.PI) * 0.32 : 0;
+
+    if (parts.isPearl) {
+      const fhWx = waveX(0.43), fhWy = waveY(0.43);
+      const fhAng = Math.sin(phase + Math.PI) * (0.14 + mb * 0.30);
+      drawPaintedPivotPart(ctx, parts.fhLeg, w, h, 0.430, 0.610, leftX + w * 0.430 + fhWx, baseTopY + h * 0.610 + fhWy, fhAng, 1);
+      const ffAng = Math.sin(phase + 0.6) * (0.10 + mb * 0.20) + strikeClaw;
+      drawPaintedPivotPart(ctx, parts.ffClaw, w, h, 0.830, 0.660, leftX + w * 0.830, baseTopY + headBob + h * 0.660, -ffAng, 1);
+    } else {
+      const ffp = parts.ffPiv;
+      const ffAng = Math.sin(phase + Math.PI) * (0.14 + mb * 0.26) + strikeClaw;
+      drawPaintedPivotPart(ctx, parts.ffClaw, w, h, ffp[0], ffp[1], leftX + w * ffp[0], baseTopY + headBob + h * ffp[1], -ffAng, 1);
+    }
+
+    const iw = parts.cleanBody.width || spr.width || 200;
+    const ih = parts.cleanBody.height || spr.height || 153;
+    const slices = 22;
+    for (let s = 0; s < slices; s++) {
+      const r0 = s / slices;
+      const r1 = (s + 1) / slices;
+      const mr = (r0 + r1) * 0.5;
+      const padL = s > 0 ? 1 : 0;
+      const padR = s < slices - 1 ? 1 : 0;
+      const sx0 = Math.max(0, Math.floor(iw * r0) - padL);
+      const sx1 = s === slices - 1 ? iw : Math.min(iw, Math.ceil(iw * r1) + padR);
+      const sw = sx1 - sx0;
+      if (sw <= 0) continue;
+      const dx0 = leftX + w * r0 + waveX(r0) - padL * (w / iw);
+      const dx1 = leftX + w * r1 + waveX(r1) + padR * (w / iw);
+      const dw = Math.max(0.5, dx1 - dx0);
+      ctx.drawImage(parts.cleanBody, sx0, 0, sw, ih, dx0, baseTopY + waveY(mr), dw, h);
+    }
+
+    if (parts.isPearl) {
+      const nhWx = waveX(0.35), nhWy = waveY(0.35);
+      const nhAng = Math.sin(phase) * (0.16 + mb * 0.34);
+      const nhLift = Math.max(0, Math.cos(phase)) * mb * 3.5 * bSc;
+      drawPaintedPivotPart(ctx, parts.nhLeg, w, h, 0.350, 0.635, leftX + w * 0.350 + nhWx, baseTopY + h * 0.635 + nhWy - nhLift, -nhAng, 1);
+      ctx.drawImage(parts.hipCap, leftX + nhWx, baseTopY + nhWy, w, h);
+      const nfAng = Math.sin(phase + Math.PI * 0.8) * (0.10 + mb * 0.22) + strikeClaw;
+      drawPaintedPivotPart(ctx, parts.nfClaw, w, h, 0.705, 0.585, leftX + w * 0.705, baseTopY + headBob + h * 0.585, -nfAng, 1);
+    } else {
+      const nfp = parts.nfPiv;
+      const nfAng = Math.sin(phase) * (0.16 + mb * 0.28) + strikeClaw;
+      drawPaintedPivotPart(ctx, parts.nfClaw, w, h, nfp[0], nfp[1], leftX + w * nfp[0], baseTopY + headBob + h * nfp[1], -nfAng, 1);
+    }
+
+    if (hitFlash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.48;
+      ctx.drawImage(parts.cleanBody, leftX, baseTopY + headBob, w, h);
+    }
+    ctx.restore();
+    return { topY: baseTopY };
+  }
+
+  // ★ 钟山烛龙（双翼双足擎日魔神态）：双巨翼熔岩扇动 + 双龙足阔步踏阵 + 托日右臂与烈焰龙尾摆动
+  function drawArticulatedWingedZhulong(ctx, spr, parts, w, h, moving, runPhase, hitFlash, pose, mb, recoil, time, idlePhase) {
+    const sc = w / 146;
+    const leftX = -w * 0.5;
+    const baseTopY = -h + 10 * sc;
+    const zlMove = (moving && !pose.active) ? clamp01(mb) : 0;
+    const breath = Math.sin((time || 0) * 2.9 + idlePhase);
+    const bobY = -Math.abs(Math.sin(runPhase)) * 3.2 * sc * zlMove + (1 - zlMove) * breath * 0.7;
+    const pitch = (0.042 + Math.cos(runPhase * 2) * 0.022) * zlMove + (pose.bodyPitch || 0) * 0.72 - recoil * 0.07;
+    const surgeX = Math.sin(runPhase * 2) * 1.2 * sc * zlMove - recoil * 2.0;
+    const wingAng = zlMove > 0.001
+      ? Math.sin(runPhase - 0.5) * 0.16 * zlMove
+      : Math.sin((time || 0) * 3.1 + idlePhase) * 0.055;
+    const atkStrike = pose.active ? Math.sin(clamp01(pose.p) * Math.PI) : 0;
+
+    ctx.save();
+    if (pose.afterimage > 0.18 && hitFlash <= 0) {
+      ctx.save();
+      ctx.globalAlpha = pose.afterimage * 0.28;
+      ctx.drawImage(spr, leftX - 12, baseTopY + bobY, w, h);
+      ctx.restore();
+    }
+
+    const pvy = -h * 0.35;
+    ctx.translate(surgeX, bobY + pvy);
+    ctx.rotate(pitch);
+    ctx.scale(pose.scaleX || 1, pose.scaleY || 1);
+    ctx.translate(0, -pvy);
+
+    // 1. 远侧熔岩龙翼 + 擎日右臂 + 远侧右龙足（交替迈步）
+    drawPaintedPivotPart(ctx, parts.farWing, w, h, 0.625, 0.265, leftX + w * 0.625, baseTopY + h * 0.265, -wingAng * 0.85, 1);
+    const sunAng = (zlMove > 0.001 ? Math.sin(runPhase + 0.8) * 0.11 * zlMove : breath * 0.04) - atkStrike * 0.26;
+    drawPaintedPivotPart(ctx, parts.sunArm, w, h, 0.775, 0.615, leftX + w * 0.775, baseTopY + h * 0.615, sunAng, 1);
+    drawPaintedTwoBoneLimb(
+      ctx, parts.fhUp, parts.fhLo, w, h,
+      0.635, 0.705, 0.655, 0.815, 0.715, 0.925, BIPED_DRAGON_KEYS,
+      leftX + w * 0.635, baseTopY + h * 0.705, runPhase + Math.PI, zlMove,
+      0.14, 0.28, 3.2 * sc, 0.10, 1.0, 1.0
+    );
+
+    // 2. 烈焰骨尾 + 近侧熔岩巨翼 + 烛龙重甲胸躯龙首 + 近侧左龙足
+    const tailAng = zlMove > 0.001 ? Math.sin(runPhase - 0.9) * 0.13 * zlMove : breath * 0.05;
+    drawPaintedPivotPart(ctx, parts.tail, w, h, 0.445, 0.725, leftX + w * 0.445, baseTopY + h * 0.725, tailAng, 1);
+    drawPaintedPivotPart(ctx, parts.nearWing, w, h, 0.555, 0.445, leftX + w * 0.555, baseTopY + h * 0.445, wingAng, 1);
+    ctx.drawImage(parts.cleanBody, leftX, baseTopY, w, h);
+    drawPaintedTwoBoneLimb(
+      ctx, parts.nhUp, parts.nhLo, w, h,
+      0.515, 0.675, 0.462, 0.825, 0.445, 0.960, BIPED_DRAGON_KEYS,
+      leftX + w * 0.515, baseTopY + h * 0.675, runPhase, zlMove,
+      -0.26, -0.06, 3.6 * sc, 0.12, 1.0, 1.0
+    );
+
+    // 3. 左龙爪臂摆动挥击 + 黄金肩吞甲盖片
+    const clawAng = (zlMove > 0.001 ? Math.sin(runPhase + Math.PI) * 0.24 * zlMove : -breath * 0.04) + atkStrike * 0.36;
+    drawPaintedPivotPart(ctx, parts.clawArm, w, h, 0.635, 0.575, leftX + w * 0.635, baseTopY + h * 0.575, -clawAng, 1);
+    ctx.drawImage(parts.cap, leftX, baseTopY, w, h);
+
+    if (hitFlash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.48;
+      ctx.drawImage(parts.cleanBody, leftX, baseTopY, w, h);
+    }
+    ctx.restore();
+    return { topY: baseTopY };
   }
 
   function drawArticulatedBaihu(ctx, spr, w, h, moving, runPhase, hitFlash, pose, mb, recoil, time, idlePhase) {
@@ -4028,50 +4701,89 @@
     const coreTpl = eq.beast_core ? App.Config.EQUIP_TEMPLATES[eq.beast_core.tplId] : null;
     const t = time || 0;
 
-    const isQinglong = u.id === 'qinglong' || u.id === 'zhulong';
-    const isZhuque = u.id === 'zhuque';
-    const isAerialWinged = u.id === 'kunpeng' || u.id === 'hundun';
+    const isZhulong = u.id === 'zhulong';
+    const isQinglong = u.id === 'qinglong';
+    const sprIw = spr ? (spr.naturalWidth || spr.width || 200) : 200;
+    const sprIh = spr ? (spr.naturalHeight || spr.height || 155) : 155;
+    const isBipedZhulong = isZhulong && sprIh > sprIw * 0.88;
+    const isBirdBeast = u.id === 'zhuque' || u.id === 'kunpeng';
     const isXuanwu = u.id === 'xuanwu';
     const isBaihu = u.id === 'baihu';
-    const isFlyer = isQinglong || isZhuque || isAerialWinged;
+    const isQuadBeast = !!QUAD_BEAST_SPECS[u.id];
+    const isFlyer = isQinglong || isBirdBeast || (isZhulong && !isBipedZhulong);
     const pose = computeAttackPose(u);
     const mb = u.moveBlend != null ? u.moveBlend : (u.moving ? 1 : 0);
 
-    // 朱雀/鲲鹏/混沌展翼节拍升浮 vs 青龙/烛龙游云盘旋升浮
-    const flapCycle = t * (5.8 + mb * 3.8) + (u.uid || 1) * 1.3;
-    const hover = (isZhuque || isAerialWinged)
-      ? (13 + Math.sin(flapCycle) * (4.2 + mb * 2.8))
-      : (isQinglong ? (11 + Math.sin(t * 4.2 + (u.uid || 1)) * 4.8) : 0);
+    // 朱雀/鲲鹏展翼节拍升浮 vs 青龙乘云破空 vs 地面瑞兽/凶兽/擎日烛龙阔步踏阵
+    const activeFlyMove = (u.moving && !pose.active) ? clamp01(mb) : 0;
+    const flapCycle = t * 5.8 + (u.runPhase || 0) * 0.42 + (u.uid || 1) * 1.3;
+    const zlFlapCycle = t * 4.4 + (u.runPhase || 0) * 0.36 + (u.uid || 1) * 1.1;
+    const qlIdlePh = u.idlePhase != null ? u.idlePhase : ((u.uid || 1) * 1.37);
+    const qlBreath = Math.sin(t * 2.2 + qlIdlePh);
+    const qlGlidePh = (u.runPhase || 0) * 0.58;
+    const qlGlideSin = Math.sin(qlGlidePh);
+    const baseHover = (isZhulong && !isBipedZhulong) ? 14.5 : (isBirdBeast ? 13 : (isQinglong ? 11.5 : 0));
+    const hover = (isZhulong && !isBipedZhulong)
+      ? (baseHover + Math.sin(zlFlapCycle) * (3.4 + activeFlyMove * 2.2))
+      : (isBirdBeast
+        ? (baseHover + Math.sin(flapCycle) * (3.8 + activeFlyMove * 2.2))
+        : (isQinglong
+          ? (baseHover + 1.2 * activeFlyMove + qlGlideSin * 0.85 * activeFlyMove + qlBreath * 1.15 * (1 - activeFlyMove))
+          : 0));
     const lungeX = pose.lungeX * 1.15 * facing;
     const worldX = u.x + lungeX + (u.knockX || 0);
 
     ctx.save();
     ctx.translate(worldX, u.y);
 
-    const beastScale = (u.scale || (u.isWildBeast ? 1.10 : 1));
-    const baseW = isZhuque ? 174 : 184;
+    const beastScale = (u.scale || (u.isWildBeast ? 1.52 : 1));
+    // 创世烛龙贵为 Lv.80 太古祖龙帝尊，双翼高展，体型较四象圣兽更加魁梧威严（200 vs 184）
+    const baseW = isZhulong ? 200 : (u.id === 'zhuque' ? 174 : (isQinglong && sprIw >= 220 ? 190 : 184));
     const w = baseW * beastScale;
-    const h = spr ? (spr.height / spr.width) * w : 160 * beastScale;
+    const h = spr ? (sprIh / sprIw) * w : 160 * beastScale;
     const bSc = w / 146;
 
-    // 地面圣兽光阵与步伐震波（玄武重踏冰环 / 白虎疾奔风环）随巨兽体型等比放大
+    // 地面圣兽光阵与步伐震波（烛龙脚下流淌钟山极昼双层赤金日晷阵纹）
     const shScale = (isFlyer ? (0.92 - hover * 0.008) : 1) * bSc;
     const shCy = 6 * bSc;
-    ctx.fillStyle = 'rgba(0,0,0,0.38)';
-    ctx.beginPath(); ctx.ellipse(0, shCy, 52 * shScale, 15 * shScale, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = isZhulong ? 'rgba(69, 10, 10, 0.48)' : 'rgba(0,0,0,0.38)';
+    ctx.beginPath(); ctx.ellipse(0, shCy, (isZhulong ? 58 : 52) * shScale, (isZhulong ? 17 : 15) * shScale, 0, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = bCfg.glow;
-    ctx.lineWidth = 2.6;
-    ctx.beginPath(); ctx.ellipse(0, shCy, (56 + Math.sin(t * 5) * 3.5) * shScale, 17 * shScale, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = isZhulong ? 3.0 : 2.6;
+    ctx.beginPath(); ctx.ellipse(0, shCy, ((isZhulong ? 63 : 56) + Math.sin(t * 5) * 3.5) * shScale, (isZhulong ? 19 : 17) * shScale, 0, 0, Math.PI * 2); ctx.stroke();
+    if (isZhulong) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.72)';
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([10, 6]);
+      ctx.beginPath();
+      ctx.ellipse(0, shCy, 47 * shScale, 13.5 * shScale, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
 
-    if (isXuanwu && mb > 0.25) {
-      const stompPulse = (u.runPhase % Math.PI) / Math.PI;
+    if ((isXuanwu || u.id === 'taotie' || u.id === 'taowu') && mb > 0.25) {
+      const stompPulse = ((u.runPhase || 0) % Math.PI) / Math.PI;
       ctx.save();
       ctx.globalAlpha = (1 - stompPulse) * 0.48 * mb;
-      ctx.strokeStyle = '#7dd3fc';
+      ctx.strokeStyle = isXuanwu ? '#7dd3fc' : (bCfg.glow || '#f97316');
       ctx.lineWidth = 2.2;
       ctx.beginPath();
       ctx.ellipse(0, shCy, (36 + stompPulse * 38) * bSc, (11 + stompPulse * 11) * bSc, 0, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.restore();
+    } else if ((u.id === 'qilin' || u.id === 'baize') && mb > 0.25) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let sp = 0; sp < 3; sp++) {
+        const pSp = ((t * 2.2 + sp * 0.33) % 1);
+        ctx.globalAlpha = (1 - pSp) * 0.62 * mb;
+        ctx.fillStyle = u.id === 'qilin' ? (sp % 2 === 0 ? '#fde047' : '#f97316') : (sp % 2 === 0 ? '#67e8f9' : '#fef08a');
+        ctx.beginPath();
+        ctx.arc(-facing * (14 + pSp * 36) * bSc, shCy - (2 + pSp * 8) * bSc, 2.8 * (1 - pSp * 0.4) * bSc, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     }
 
@@ -4091,155 +4803,121 @@
       ctx.restore();
     }
 
-    let topY = -h + 14 * bSc - hover;
+    let topY = -h + 14 * bSc - baseHover;
 
     ctx.save();
     ctx.translate(0, -hover + (pose.lungeY || 0));
     ctx.scale(facing, 1);
 
     if (isQinglong && spr) {
-      // ★ 青龙专属【18节游龙蜿蜒步态 + 刚性昂首】：龙尾与盘身大幅S形推进，龙首锁定相位绝不果冻拉扯变形！
-      const iw = spr.naturalWidth || spr.width || 200;
-      const ih = spr.naturalHeight || spr.height || 153;
-      const slices = 18;
-      const waveSpeed = t * (4.4 + mb * 4.0) + (u.runPhase || 0) * 0.42;
-      const waveAmp = 3.2 + mb * 5.6 + (pose.active ? 2.2 : 0);
+      // ★ 青龙专属【四爪踏云拨雾 + 无缝游龙推进波 + 100%刚性昂首龙颜】
+      const qlParts = getCleanQinglongParts(spr);
+      const qlMove = activeFlyMove;
+      const info = drawSerpentineDragon(ctx, spr, qlParts, w, h, bSc, t, u.runPhase || 0, qlMove, u.hitFlash, pose);
+      topY = info.topY - baseHover + (pose.lungeY || 0);
 
-      if (pose.afterimage > 0.18 && u.hitFlash <= 0) {
-        ctx.save();
-        ctx.globalAlpha = pose.afterimage * 0.30;
-        ctx.drawImage(spr, -w / 2 - 14 * bSc, -h + 14 * bSc, w, h);
-        ctx.restore();
-      }
-
-      ctx.save();
-      ctx.rotate((pose.bodyPitch || 0) * 0.72);
-      ctx.scale(pose.scaleX || 1, pose.scaleY || 1);
-      for (let s = 0; s < slices; s++) {
-        const r0 = s / slices;
-        const r1 = (s + 1) / slices;
-        const midR = (r0 + r1) * 0.5;
-        const sx0 = Math.floor(iw * r0);
-        const sx1 = s === slices - 1 ? iw : Math.ceil(iw * r1);
-        const sw = sx1 - sx0;
-        if (sw <= 0) continue;
-        const dx0 = -w / 2 + w * r0;
-        const dw = w * (r1 - r0) + (s < slices - 1 ? 0.9 : 0);
-        // 0..0.64 龙尾与龙腹盘身强劲起伏；0.64..1.0 龙首与前爪锁相整体昂扬，杜绝面部五官扭曲！
-        const effPhaseR = midR <= 0.64 ? midR : (0.64 + (midR - 0.64) * 0.14);
-        const tailWeight = midR <= 0.64 ? (1.30 - midR * 0.72) : (0.84 - (midR - 0.64) * 1.15);
-        const wy = Math.sin(waveSpeed - effPhaseR * 5.0) * waveAmp * bSc * tailWeight;
-        ctx.drawImage(spr, sx0, 0, sw, ih, dx0, -h + 14 * bSc + wy, dw, h);
-      }
-      if (u.hitFlash > 0) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.48;
-        ctx.drawImage(spr, -w / 2, -h + 14 * bSc, w, h);
-      }
-      ctx.restore();
-
-      // 青龙周身游走雷云电芒
+      // 青龙乘云破空向后掠过的流风丝带与东海苍雷灵芒
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = '#6ee7b7';
-      ctx.lineWidth = 1.6;
-      ctx.globalAlpha = 0.45 + mb * 0.3;
-      for (let b = 0; b < 2; b++) {
-        const bx = -42 + ((t * 85 + b * 48) % 86);
-        const by = -58 + Math.sin(t * 9 + b * 3) * 22;
+      ctx.lineCap = 'round';
+      if (qlMove > 0.06) {
+        for (let stIdx = 0; stIdx < 2; stIdx++) {
+          const prog = ((t * 1.65 + stIdx * 0.5) % 1);
+          const headX = (44 - prog * 118) * bSc;
+          const streamLen = (26 + 16 * Math.sin(prog * Math.PI)) * bSc;
+          const sy = (stIdx === 0 ? -20 : -54) * bSc + Math.sin(prog * Math.PI * 2 + stIdx) * 2.2 * bSc;
+          ctx.strokeStyle = '#a7f3d0';
+          ctx.lineWidth = (stIdx === 0 ? 1.8 : 1.3) * bSc;
+          ctx.globalAlpha = Math.sin(prog * Math.PI) * 0.46 * qlMove;
+          ctx.beginPath();
+          ctx.moveTo(headX, sy);
+          ctx.quadraticCurveTo(headX - streamLen * 0.5, sy - 2.0 * bSc, headX - streamLen, sy + 0.8 * bSc);
+          ctx.stroke();
+        }
+      }
+      for (let b = 0; b < 3; b++) {
+        ctx.strokeStyle = b === 2 ? '#fef08a' : (b === 1 ? '#67e8f9' : '#34d399');
+        ctx.lineWidth = 1.5;
+        const arcProg = ((t * (1.15 + qlMove * 0.7) + b * 0.34) % 1);
+        const bx = (36 - arcProg * 96) * bSc;
+        const by = (-46 - b * 11 + Math.sin(arcProg * Math.PI * 2 + b) * 3.5) * bSc;
+        ctx.globalAlpha = Math.sin(arcProg * Math.PI) * (0.40 + qlMove * 0.26);
         ctx.beginPath();
-        ctx.moveTo(bx - 8, by - 5);
-        ctx.lineTo(bx, by + 2);
-        ctx.lineTo(bx + 5, by - 4);
-        ctx.lineTo(bx + 12, by + 4);
+        ctx.moveTo(bx + 7 * bSc, by - 1.5 * bSc);
+        ctx.lineTo(bx + 1 * bSc, by + 1.8 * bSc);
+        ctx.lineTo(bx - 4 * bSc, by - 1.2 * bSc);
+        ctx.lineTo(bx - 10 * bSc, by + 1.5 * bSc);
         ctx.stroke();
       }
       ctx.restore();
-    } else if (isZhuque && spr) {
-      // ★ 朱雀专属【真肩轴双翼旋转鼓翼 + 独立凤尾流焰摆动】：彻底告别整列竖切拉扯凤尾与鸟喙！
-      const zqParts = getCleanZhuqueParts(spr);
-      const flapSin = Math.sin(flapCycle);
-      const wingAng = flapSin * (0.25 + mb * 0.11);
-      const leftX = -w / 2;
-      const baseTopY = -h + 14 * bSc;
+    } else if (isZhulong && spr) {
+      // ★ 创世烛龙专属【九曜日冕神环 + 双巨翼扇动 + 双龙足阔步踏阵 + 擎日龙爪挥舞】
+      const zlParts = getCleanZhulongParts(spr);
+      const baseTopY = -h + (isBipedZhulong ? 10 : 13) * bSc;
+      const haloCx = w * 0.16;
+      const haloCy = baseTopY + h * 0.36;
+      const haloR = (34 + 2.8 * Math.sin(t * 3.6)) * bSc;
 
-      if (pose.afterimage > 0.18 && u.hitFlash <= 0) {
-        ctx.save();
-        ctx.globalAlpha = pose.afterimage * 0.32;
-        ctx.drawImage(spr, leftX - 14, baseTopY, w, h);
-        ctx.restore();
-      }
-
+      // 1. 背部旋转【太古钟山九曜日冕神环】
       ctx.save();
-      ctx.rotate((pose.bodyPitch || 0) * 0.8 + mb * 0.05);
-      ctx.scale(pose.scaleX || 1, pose.scaleY || 1);
-
-      if (zqParts) {
-        // 1. 远侧右翼绕右肩轴扇动（置于凤首胸羽后层，绝无裂口）
-        ctx.save();
-        const rwx = leftX + w * 0.615, rwy = baseTopY + h * 0.465;
-        ctx.translate(rwx, rwy);
-        ctx.rotate(-wingAng);
-        ctx.scale(1, 1 - Math.abs(flapSin) * 0.06);
-        ctx.translate(-rwx, -rwy);
-        ctx.drawImage(zqParts.rightWing, leftX, baseTopY, w, h);
-        ctx.restore();
-
-        // 2. 凤首胸躯稳健昂扬 + 下半部修长凤尾流焰柔波摆动
-        const iw = zqParts.bodyTail.width || 200;
-        const ih = zqParts.bodyTail.height || 197;
-        const splitSy = Math.round(ih * 0.54);
-        const splitDh = h * (splitSy / ih);
-        ctx.drawImage(zqParts.bodyTail, 0, 0, iw, splitSy + 1, leftX, baseTopY, w, splitDh + 0.8);
-        const tailBands = 7;
-        const tailShTotal = ih - splitSy;
-        const tailDhTotal = h - splitDh;
-        for (let tb = 0; tb < tailBands; tb++) {
-          const tr0 = tb / tailBands;
-          const tr1 = (tb + 1) / tailBands;
-          const sy0 = splitSy + Math.floor(tailShTotal * tr0);
-          const sy1 = tb === tailBands - 1 ? ih : (splitSy + Math.ceil(tailShTotal * tr1));
-          const sh = sy1 - sy0;
-          if (sh <= 0) continue;
-          const dy0 = baseTopY + splitDh + tailDhTotal * tr0;
-          const dhBand = tailDhTotal * (tr1 - tr0) + 0.7;
-          const swayX = Math.sin(t * 6.8 - tr0 * 3.4) * (2.2 + mb * 2.8) * (tr0 * 0.85 + 0.15);
-          const swayY = Math.cos(t * 6.8 - tr0 * 3.0) * (1.2 + mb * 1.4) * tr0;
-          ctx.drawImage(zqParts.bodyTail, 0, sy0, iw, sh, leftX + swayX, dy0 + swayY, w, dhBand);
-        }
-
-        // 3. 近侧左翼绕左肩轴大幅拍击
-        ctx.save();
-        const lwx = leftX + w * 0.485, lwy = baseTopY + h * 0.465;
-        ctx.translate(lwx, lwy);
-        ctx.rotate(wingAng);
-        ctx.scale(1, 1 - Math.abs(flapSin) * 0.06);
-        ctx.translate(-lwx, -lwy);
-        ctx.drawImage(zqParts.leftWing, leftX, baseTopY, w, h);
-        ctx.restore();
-      } else {
-        ctx.drawImage(spr, leftX, baseTopY, w, h);
-      }
-
-      if (u.hitFlash > 0) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.48;
-        ctx.drawImage(spr, leftX, baseTopY, w, h);
-      }
-      ctx.restore();
-
-      // 朱雀振翅飘散离火星羽
-      ctx.save();
+      ctx.translate(haloCx, haloCy);
       ctx.globalCompositeOperation = 'lighter';
-      for (let e = 0; e < 4; e++) {
-        const pEm = ((t * 1.6 + e * 0.25) % 1);
-        ctx.globalAlpha = (1 - pEm) * 0.72;
-        ctx.fillStyle = e % 2 === 0 ? '#fde047' : '#fb923c';
+      const sunGlow = ctx.createRadialGradient(0, 0, haloR * 0.16, 0, 0, haloR * 1.55);
+      sunGlow.addColorStop(0, 'rgba(254, 240, 138, 0.56)');
+      sunGlow.addColorStop(0.55, 'rgba(234, 88, 12, 0.30)');
+      sunGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = sunGlow;
+      ctx.beginPath();
+      ctx.arc(0, 0, haloR * 1.55, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.rotate(t * 0.92);
+      ctx.strokeStyle = '#fde047';
+      ctx.globalAlpha = 0.78;
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.arc(0, 0, haloR, 0, Math.PI * 2);
+      ctx.stroke();
+      for (let i = 0; i < 12; i++) {
+        const a = (Math.PI * 2 * i) / 12;
+        const rOut = haloR + (i % 2 === 0 ? 10.5 : 5.5) * bSc;
+        ctx.fillStyle = i % 2 === 0 ? '#fef08a' : '#f97316';
         ctx.beginPath();
-        ctx.arc(-18 - pEm * 44, -44 - e * 11 + Math.sin(t * 8 + e) * 6, 3.2 * (1 - pEm * 0.5), 0, Math.PI * 2);
+        ctx.moveTo(Math.cos(a - 0.085) * (haloR - 1.2), Math.sin(a - 0.085) * (haloR - 1.2));
+        ctx.lineTo(Math.cos(a) * rOut, Math.sin(a) * rOut);
+        ctx.lineTo(Math.cos(a + 0.085) * (haloR - 1.2), Math.sin(a + 0.085) * (haloR - 1.2));
+        ctx.closePath();
         ctx.fill();
       }
       ctx.restore();
+
+      // 2. 分件骨骼真身渲染（双翼拍动 + 双龙足交替迈步 + 擎日烈阳呼吸）
+      if (zlParts && zlParts.isBipedWinged) {
+        const info = drawArticulatedWingedZhulong(ctx, spr, zlParts, w, h, u.moving, u.runPhase || 0, u.hitFlash, pose, mb, u.hitRecoil || 0, t, u.idlePhase || 0);
+        topY = info.topY - baseHover + (pose.lungeY || 0);
+      } else {
+        const info = drawSerpentineDragon(ctx, spr, zlParts, w, h, bSc, t, u.runPhase || 0, activeFlyMove, u.hitFlash, pose);
+        topY = info.topY - baseHover + (pose.lungeY || 0);
+      }
+
+      // 3. 周身升腾九阳金焰星火
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let e = 0; e < 5; e++) {
+        const pEm = ((t * 1.45 + e * 0.20) % 1);
+        const ex = (-42 + e * 21) * bSc + Math.sin(t * 6.2 + e * 1.7) * 5 * bSc;
+        const ey = (-18 - pEm * 68) * bSc;
+        ctx.globalAlpha = Math.sin(pEm * Math.PI) * 0.82;
+        ctx.fillStyle = e % 2 === 0 ? '#fef08a' : '#f97316';
+        ctx.beginPath();
+        ctx.arc(ex, ey, (3.4 - pEm * 1.5) * bSc, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (isBirdBeast && spr) {
+      // ★ 朱雀/鲲鹏专属【真肩轴双翼旋转鼓翼 + 独立凤尾/孔雀翎流波摆动】
+      const info = drawArticulatedBirdBeast(ctx, u.id, spr, w, h, bSc, flapCycle, mb, u.hitFlash, pose, t);
+      topY = info.topY - baseHover + (pose.lungeY || 0);
     } else if (isBaihu && spr) {
       // ★ 庚金白虎专属【真猛虎纵跃四拍骨骼 + 虎纹利爪 + 金翼扇动】：彻底根除原切图断爪残影！
       const info = drawArticulatedBaihu(ctx, spr, w, h, u.moving, u.runPhase || 0, u.hitFlash, pose, mb, u.hitRecoil || 0, t, u.idlePhase || 0);
@@ -4253,29 +4931,18 @@
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.22 + 0.16 * Math.sin(t * 4.2);
-      const sg = ctx.createRadialGradient(-4, -58, 4, -4, -58, 42);
+      const sg = ctx.createRadialGradient(-4 * bSc, -58 * bSc, 4 * bSc, -4 * bSc, -58 * bSc, 42 * bSc);
       sg.addColorStop(0, '#67e8f9');
       sg.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = sg;
       ctx.beginPath();
-      ctx.arc(-4, -58, 42, 0, Math.PI * 2);
+      ctx.arc(-4 * bSc, -58 * bSc, 42 * bSc, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-    } else if (isAerialWinged && spr) {
-      // ★ 鲲鹏/混沌专属凌空展翼翱翔姿态
-      const leftX = -w * 0.5;
-      const baseTopY = -h + 12 * bSc;
-      ctx.save();
-      ctx.rotate((pose.bodyPitch || 0) * 0.65 + Math.sin(flapCycle) * 0.035);
-      ctx.scale((pose.scaleX || 1) * (1 + Math.sin(flapCycle) * 0.025), (pose.scaleY || 1) * (1 - Math.sin(flapCycle) * 0.03));
-      ctx.drawImage(spr, leftX, baseTopY, w, h);
-      if (u.hitFlash > 0) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.48;
-        ctx.drawImage(spr, leftX, baseTopY, w, h);
-      }
-      ctx.restore();
-      topY = baseTopY - hover + (pose.lungeY || 0);
+    } else if (isQuadBeast && spr) {
+      // ★ 麒麟/白泽/穷奇/混沌/饕餮/梼杌专属【真双骨骼四拍奔腾 + 翼尾联动 + 肩吞盖片】
+      const info = drawArticulatedQuadBeast(ctx, u.id, spr, w, h, u.moving, u.runPhase || 0, u.hitFlash, pose, mb, u.hitRecoil || 0, t, u.idlePhase || 0);
+      topY = info.topY - hover + (pose.lungeY || 0);
     } else {
       const info = drawArticulatedSprite(ctx, spr, w, h, u.moving, u.runPhase, u.hitFlash, {
         spriteKey: sprKey,
@@ -4302,7 +4969,7 @@
       ctx.restore();
     }
 
-    // ★ 四象神兽各自专属普攻元素爆发特效（随巨兽体型等比放大）
+    // ★ 十二神兽各自专属普攻元素爆发特效（随巨兽体型等比放大）
     if (pose.strikeFlash > 0.06) {
       const sf = Math.min(1, pose.strikeFlash * 1.25);
       const cCol = clawTpl ? (clawTpl.clawColor || bCfg.glow) : bCfg.glow;
@@ -4311,7 +4978,39 @@
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = sf;
 
-      if (isQinglong) {
+      if (isZhulong) {
+        // 创世烛龙：太古烈阳贯日吐息 + 三重赤金撕天皇龙爪
+        const rg = ctx.createRadialGradient(64, -62, 4, 64, -62, 46);
+        rg.addColorStop(0, '#ffffff');
+        rg.addColorStop(0.35, '#fef08a');
+        rg.addColorStop(0.72, '#ea580c');
+        rg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = rg;
+        ctx.beginPath(); ctx.arc(64, -62, 46, 0, Math.PI * 2); ctx.fill();
+
+        const beamG = ctx.createLinearGradient(28, -68, 118, -42);
+        beamG.addColorStop(0, '#ffffff');
+        beamG.addColorStop(0.45, '#fde047');
+        beamG.addColorStop(0.82, '#dc2626');
+        beamG.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = beamG;
+        ctx.beginPath();
+        ctx.moveTo(28, -72);
+        ctx.quadraticCurveTo(78, -88, 118, -48);
+        ctx.quadraticCurveTo(76, -34, 28, -54);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.lineCap = 'round';
+        for (let k = -1; k <= 1; k++) {
+          ctx.strokeStyle = k === 0 ? '#ffffff' : '#fde047';
+          ctx.lineWidth = k === 0 ? 4.8 : 3.4;
+          ctx.beginPath();
+          ctx.moveTo(38, -68 + k * 13);
+          ctx.quadraticCurveTo(76, -58 + k * 12, 112, -26 + k * 14);
+          ctx.stroke();
+        }
+      } else if (isQinglong) {
         // 青龙：苍雷龙息球 + 闪电双龙爪撕裂
         const rg = ctx.createRadialGradient(58, -56, 3, 58, -56, 34);
         rg.addColorStop(0, '#ffffff');
@@ -4329,12 +5028,12 @@
           ctx.lineTo(96, -52 + k * 6);
           ctx.stroke();
         }
-      } else if (isZhuque) {
-        // 朱雀：俯冲南明离火扇形烈焰冲击波
+      } else if (isBirdBeast) {
+        // 朱雀南明离火冲击波 / 鲲鹏北冥沧溟风刃波
         const fg = ctx.createLinearGradient(22, -62, 102, -32);
         fg.addColorStop(0, '#ffffff');
-        fg.addColorStop(0.45, '#fde047');
-        fg.addColorStop(0.8, '#ef4444');
+        fg.addColorStop(0.45, u.id === 'kunpeng' ? '#7dd3fc' : '#fde047');
+        fg.addColorStop(0.8, u.id === 'kunpeng' ? '#2563eb' : '#ef4444');
         fg.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = fg;
         ctx.beginPath();
@@ -4344,8 +5043,8 @@
         ctx.quadraticCurveTo(54, -26, 22, -52);
         ctx.closePath();
         ctx.fill();
-      } else if (isXuanwu) {
-        // 玄武：龟背双角玄蛇喷吐极寒冰棱束
+      } else if (isXuanwu || u.id === 'baize') {
+        // 玄武玄冥冰棱 / 白泽瑞雪星辉光束
         const ig = ctx.createLinearGradient(22, -82, 98, -36);
         ig.addColorStop(0, '#ffffff');
         ig.addColorStop(0.5, '#67e8f9');
@@ -4363,8 +5062,22 @@
         ctx.beginPath();
         ctx.moveTo(24, -81); ctx.lineTo(96, -36);
         ctx.stroke();
+      } else if (u.id === 'qilin') {
+        // 麒麟：祥瑞金焰踏火冲击弧
+        const qg = ctx.createRadialGradient(64, -48, 4, 64, -48, 36);
+        qg.addColorStop(0, '#ffffff');
+        qg.addColorStop(0.45, '#fde047');
+        qg.addColorStop(0.8, '#f97316');
+        qg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = qg;
+        ctx.beginPath(); ctx.arc(64, -48, 36, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 3.2;
+        ctx.beginPath();
+        ctx.arc(46, -48, 38, -0.68, 0.68);
+        ctx.stroke();
       } else {
-        // 白虎：庚金四道交叉裂空虎爪芒
+        // 白虎/穷奇/混沌/饕餮/梼杌：狂暴四道交叉裂空利爪芒
         ctx.lineCap = 'round';
         for (let k = -1.5; k <= 1.5; k += 1) {
           ctx.strokeStyle = Math.abs(k) < 1 ? '#ffffff' : cCol;
@@ -4381,8 +5094,8 @@
 
     if (coreTpl) {
       const orbAng = (time || 0) * 3.6;
-      const ox = Math.cos(orbAng) * 56;
-      const oy = -52 - hover + Math.sin(orbAng) * 17;
+      const ox = Math.cos(orbAng) * 56 * bSc;
+      const oy = -52 * bSc - hover + Math.sin(orbAng) * 17 * bSc;
       ctx.save();
       ctx.fillStyle = coreTpl.orbColor || '#fde047';
       ctx.shadowColor = coreTpl.orbColor || '#fde047';
@@ -4402,6 +5115,7 @@
     if (hudCollector) {
       hudCollector.push({
         kind: 'beast',
+        isBossBeast: !!u.isWildBeast,
         uid: u.uid,
         x: worldX,
         anchorY,
@@ -4417,7 +5131,7 @@
       });
     } else {
       drawSingleNameplate(ctx, {
-        kind: 'beast', x: worldX, cy: anchorY - 12, label,
+        kind: 'beast', isBossBeast: !!u.isWildBeast, x: worldX, cy: anchorY - 12, label,
         labelColor: bCfg.glow || '#fde047',
         barColor: u.side === 'player' ? '#22c55e' : '#ef4444',
         rageColor: bCfg.glow || '#38bdf8',
@@ -4452,12 +5166,13 @@
       return;
     }
     const isBeast = item.kind === 'beast';
+    const isBossBeast = !!(isBeast && item.isBossBeast);
     const isMainBase = item.kind === 'main_base';
-    ctx.font = `bold ${(isBeast || isMainBase) ? 11.5 : 10.5}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+    ctx.font = `bold ${(isBossBeast ? 12.5 : ((isBeast || isMainBase) ? 11.5 : 10.5))}px "PingFang SC", "Microsoft YaHei", sans-serif`;
     const textW = ctx.measureText(item.label).width;
-    const barW = isMainBase ? Math.max(96, textW + 8) : (isBeast ? Math.max(76, textW + 6) : Math.max(54, textW + 4));
-    const pillW = barW + (isMainBase ? 14 : 10);
-    const pillH = isMainBase ? 24 : (isBeast ? 22 : 21);
+    const barW = (isMainBase || isBossBeast) ? Math.max(108, textW + 10) : (isBeast ? Math.max(76, textW + 6) : Math.max(54, textW + 4));
+    const pillW = barW + ((isMainBase || isBossBeast) ? 14 : 10);
+    const pillH = (isMainBase || isBossBeast) ? 24 : (isBeast ? 22 : 21);
     const px = item.x - pillW / 2;
     const py = item.cy - pillH / 2;
 
@@ -4557,15 +5272,16 @@
       const it = hudList[i];
       if (it.kind !== 'general' && it.kind !== 'beast' && it.kind !== 'prop' && it.kind !== 'main_base' && it.kind !== 'building_tag') continue;
       const isBeast = it.kind === 'beast';
+      const isBossBeast = !!(isBeast && it.isBossBeast);
       const isMainBase = it.kind === 'main_base';
       const isBldTag = it.kind === 'building_tag';
-      ctx.font = `bold ${(isBeast || isMainBase) ? 11.5 : 10.5}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+      ctx.font = `bold ${(isBossBeast ? 12.5 : ((isBeast || isMainBase) ? 11.5 : 10.5))}px "PingFang SC", "Microsoft YaHei", sans-serif`;
       const tw = ctx.measureText(it.label).width;
       const pillW = isBldTag
         ? (tw + 14)
-        : ((isMainBase ? Math.max(96, tw + 8) : (isBeast ? Math.max(76, tw + 6) : Math.max(54, tw + 4))) + (isMainBase ? 14 : 10));
+        : (((isMainBase || isBossBeast) ? Math.max(108, tw + 10) : (isBeast ? Math.max(76, tw + 6) : Math.max(54, tw + 4))) + ((isMainBase || isBossBeast) ? 14 : 10));
       const eqExtra = (it.eqItems && it.eqItems.length > 0) ? 15 : 0;
-      const pillH = isBldTag ? 18 : (isMainBase ? 24 : (isBeast ? 22 : 21));
+      const pillH = isBldTag ? 18 : ((isMainBase || isBossBeast) ? 24 : (isBeast ? 22 : 21));
       plates.push(Object.assign({}, it, {
         origX: it.x,
         cy: Math.max(58 + eqExtra, it.anchorY - pillH / 2 - 2),
@@ -4921,7 +5637,8 @@
     ctx.translate(d.x - facing * knock, d.y + hopY);
     ctx.scale(facing, 1 - p * 0.22);
     ctx.rotate(-easeOutQuad(p) * 1.28);
-    const h = d.kind === 'beast' ? 118 : (d.kind === 'general' ? 88 : (d.isMounted ? 74 : 58));
+    const dieScale = d.scale || (d.isWildBeast ? 1.52 : 1);
+    const h = (d.kind === 'beast' ? 136 : (d.kind === 'general' ? 88 : (d.isMounted ? 74 : 58))) * dieScale;
     const w = (spr.width / spr.height) * h;
     ctx.drawImage(spr, -w / 2, -h + 8, w, h);
     ctx.restore();
@@ -5225,12 +5942,26 @@
       const bAlpha = Math.max(0, 1 - ratio * 0.88);
       const sz = (62 + ratio * 34) * sc;
       if (App.SkillVFX && App.SkillVFX.drawPaintedBurst) {
-        if (bid === 'qinglong') {
-          App.SkillVFX.drawPaintedBurst(ctx, 'vfx_dragon_slash', 'vfx_thunder', p.x2, p.y2, sz, sz, ratio * 0.6 * dir, bAlpha * 0.62, null, dir < 0, 0);
-        } else if (bid === 'zhuque') {
-          App.SkillVFX.drawPaintedBurst(ctx, 'vfx_fire', 'vfx_fire', p.x2, p.y2 - 6, sz, sz * 1.05, 0, bAlpha * 0.65, null, dir < 0, 0);
-        } else if (bid === 'xuanwu') {
+        if (bid === 'zhulong') {
+          const zSz = sz * 1.24;
+          App.SkillVFX.drawPaintedBurst(ctx, 'vfx_fire', 'vfx_dragon_slash', p.x2, p.y2 - 8, zSz, zSz, ratio * 0.45 * dir, bAlpha * 0.82, '#fbbf24', dir < 0, 0.35);
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.strokeStyle = '#fde047';
+          ctx.globalAlpha = bAlpha * 0.72;
+          ctx.lineWidth = 2.6 * (1 - ratio * 0.5);
+          ctx.beginPath();
+          ctx.ellipse(p.x2, p.y2 - 4, zSz * (0.32 + ratio * 0.28), zSz * (0.14 + ratio * 0.12), 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        } else if (bid === 'qinglong') {
+          App.SkillVFX.drawPaintedBurst(ctx, 'vfx_dragon_slash', 'vfx_thunder', p.x2, p.y2, sz, sz, ratio * 0.6 * dir, bAlpha * 0.65, null, dir < 0, 0);
+        } else if (bid === 'zhuque' || bid === 'qilin' || bid === 'taowu') {
+          App.SkillVFX.drawPaintedBurst(ctx, 'vfx_fire', 'vfx_fire', p.x2, p.y2 - 6, sz, sz * 1.05, 0, bAlpha * 0.65, bid === 'qilin' ? '#fde047' : null, dir < 0, bid === 'qilin' ? 0.35 : 0);
+        } else if (bid === 'xuanwu' || bid === 'baize') {
           App.SkillVFX.drawPaintedBurst(ctx, 'vfx_ice', 'vfx_ice', p.x2, p.y2, sz, sz, 0, bAlpha * 0.65, null, dir < 0, 0);
+        } else if (bid === 'kunpeng' || bid === 'hundun') {
+          App.SkillVFX.drawPaintedBurst(ctx, 'vfx_water_tsunami', 'vfx_thunder', p.x2, p.y2, sz, sz, 0, bAlpha * 0.65, bid === 'hundun' ? '#f472b6' : null, dir < 0, bid === 'hundun' ? 0.45 : 0);
         } else {
           App.SkillVFX.drawPaintedBurst(ctx, 'vfx_tiger_roar', 'vfx_crimson_slash', p.x2, p.y2, sz, sz, 0, bAlpha * 0.62, '#fbbf24', dir < 0, 0.55);
         }

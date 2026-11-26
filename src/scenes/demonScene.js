@@ -3,8 +3,22 @@
 
   // 魔将挑战：击败巨型魔将获得信物，集齐后兑换该武将
   let page = 0;
+  let factionFilter = 'all';
 
-  function enter() { page = 0; }
+  const FACTION_TABS = [
+    { id: 'all', label: '全部' },
+    { id: 'wei', label: '曹魏' },
+    { id: 'shu', label: '蜀汉' },
+    { id: 'wu', label: '东吴' },
+    { id: 'qun', label: '群雄' },
+  ];
+
+  function enter(params) {
+    if (params && params.reset) {
+      page = 0;
+      factionFilter = 'all';
+    }
+  }
 
   function challenge(d) {
     const g = App.Config.GENERALS[d.generalId];
@@ -56,7 +70,45 @@
     // 右上角统一 ✕ 关闭圆章按钮
     App.UI.drawCloseButton(ctx, W - 74, 71, 32, () => App.Main.goScene('map'));
 
-    const list = Object.keys(C.DEMONS).map((k) => Object.assign({ id: k }, C.DEMONS[k])).sort((a, b) => (a.order || 0) - (b.order || 0));
+    const allDemons = Object.keys(C.DEMONS).map((k) => Object.assign({ id: k }, C.DEMONS[k])).sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    // 顶栏右侧阵营快速筛选签（方便在 36 位魔将中快速定位目标阵营）
+    const tabW = 62, tabH = 26, tabGap = 6;
+    const tabsStartX = W - 88 - FACTION_TABS.length * (tabW + tabGap) + tabGap;
+    FACTION_TABS.forEach((t, idx) => {
+      const tx = tabsStartX + idx * (tabW + tabGap), ty = 74;
+      const active = factionFilter === t.id;
+      const subset = t.id === 'all' ? allDemons : allDemons.filter((d) => (C.GENERALS[d.generalId] || {}).faction === t.id);
+      const hasRedeem = subset.some((d) => ((st.demonTokens || {})[d.id] || 0) >= (d.tokensNeeded || 20));
+      const label = t.id === 'all' ? `全部(${allDemons.length})` : t.label;
+      App.UI.drawButton(ctx, tx, ty, tabW, tabH, label, {
+        r: 7,
+        grad: active ? ['#b45309', '#78350f'] : ['#29100a', '#1a0905'],
+        border: active ? '#fde047' : 'rgba(217, 119, 6, 0.55)',
+        color: active ? '#fef08a' : '#fed7aa',
+        fontSize: t.id === 'all' ? 10.5 : 11.5,
+      }, () => {
+        if (factionFilter !== t.id) {
+          factionFilter = t.id;
+          page = 0;
+        }
+      });
+      if (hasRedeem) {
+        ctx.save();
+        ctx.fillStyle = '#ef4444';
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(tx + tabW - 4, ty + 4, 4.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+
+    const list = factionFilter === 'all'
+      ? allDemons
+      : allDemons.filter((d) => (C.GENERALS[d.generalId] || {}).faction === factionFilter);
     const totalPages = Math.max(1, Math.ceil(list.length / 3));
     page = Math.max(0, Math.min(page, totalPages - 1));
 

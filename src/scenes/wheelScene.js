@@ -59,7 +59,8 @@
         return;
       }
     } else if ((st.wheelTickets || 0) <= 0) {
-      App.UI.showToast('抽奖次数不足，可看视频免费领券或切换至【元宝抽奖】！', '#fbbf24');
+      const adsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
+      App.UI.showToast(adsOn ? '抽奖次数不足，可看视频免费领券或切换至【元宝抽奖】！' : '抽奖次数不足，可切换至【元宝抽奖】进行祈愿！', '#fbbf24');
       return;
     }
 
@@ -292,7 +293,8 @@
       }
       ctx.restore();
 
-      App.UI.drawButton(ctx, rx + 20, 434, 198, 58, spinning ? '轮盘旋转中...' : `立即抽奖 (剩${st.wheelTickets || 0}次)`, {
+      const adsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
+      App.UI.drawButton(ctx, rx + 20, 434, adsOn ? 198 : (rwPanel - 40), 58, spinning ? '轮盘旋转中...' : `立即抽奖 (剩${st.wheelTickets || 0}次)`, {
         r: 10,
         grad: ['#dc2626', '#991b1b'],
         border: '#fef08a',
@@ -301,16 +303,18 @@
         disabled: spinning || (st.wheelTickets || 0) <= 0,
       }, () => startSpin(0));
 
-      App.UI.drawAdButton(ctx, rx + 230, 434, 206, 58, '免费领抽奖次数', {
-        r: 10,
-        fontSize: 14.5,
-        subText: '每次免费 +1 次天命抽奖',
-        disabled: spinning,
-      }, () => {
-        App.Platform.showRewardedAd('wheel', '观看激励视频，免费获得 +1 次天命轮盘抽奖机会！', () => {
-          App.State.claimAd('wheel');
+      if (adsOn) {
+        App.UI.drawAdButton(ctx, rx + 230, 434, 206, 58, '免费领抽奖次数', {
+          r: 10,
+          fontSize: 14.5,
+          subText: '每次免费 +1 次天命抽奖',
+          disabled: spinning,
+        }, () => {
+          App.Platform.showRewardedAd('wheel', '观看激励视频，免费获得 +1 次天命轮盘抽奖机会！', () => {
+            App.State.claimAd('wheel');
+          });
         });
-      });
+      }
     } else {
       // ★ 元宝祈愿抽奖模式：最低1元宝起抽，消耗越多高品几率越高！
       const minIngot = (App.Config.PARAMS && App.Config.PARAMS.wheelMinIngot) || 1;

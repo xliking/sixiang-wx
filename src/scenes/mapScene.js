@@ -151,17 +151,18 @@
     const cy = 18, ch = 24;
     const maxDep = (App.Config.PARAMS && App.Config.PARAMS.maxDeploy) || 5;
     const heroPower = App.State.getDeployHeroPower ? App.State.getDeployHeroPower() : App.State.getTeamPower();
+    const adsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
 
-    // 1. 铜钱胶囊（点击右侧 + 号看广告领军饷）
+    // 1. 铜钱胶囊（广告开启时展示右侧 + 号领军饷；关闭时隐藏 + 号）
     App.UI.drawResCapsule(ctx, 'res_gold', 180, cy, 104, ch, `${st.gold}`, {
       color: '#fbbf24', border: 'rgba(251, 191, 36, 0.60)', glow: 'rgba(251, 191, 36, 0.45)',
-      fontSize: 10.5, plusBadge: true, plusColor: '#d97706', onPlusClick: claimGoldAd,
-    }, claimGoldAd);
+      fontSize: 10.5, plusBadge: adsOn, plusColor: '#d97706', onPlusClick: adsOn ? claimGoldAd : null,
+    }, adsOn ? claimGoldAd : null);
 
-    // 2. 元宝胶囊（点击打开九州钱庄·铜钱⇄元宝互转）
+    // 2. 元宝胶囊（点击打开九州钱庄·铜钱⇄元宝互转；广告关闭时不展示 + 号）
     App.UI.drawResCapsule(ctx, 'res_ingot', 290, cy, 92, ch, `${st.ingot || 0}`, {
       color: '#fef08a', border: 'rgba(250, 204, 21, 0.72)', glow: 'rgba(245, 158, 11, 0.52)',
-      fontSize: 10.5, plusBadge: true, plusColor: '#b45309', onPlusClick: openExchange,
+      fontSize: 10.5, plusBadge: adsOn, plusColor: '#b45309', onPlusClick: adsOn ? openExchange : null,
     }, openExchange);
 
     // 3. 将魂胶囊
@@ -178,11 +179,11 @@
       fontSize: 10,
       ratio: Math.min(1, st.stamina / App.State.STAMINA_MAX),
       barColor: 'rgba(22, 163, 74, 0.42)',
-      plusBadge: true,
+      plusBadge: adsOn,
       plusColor: '#16a34a',
       plusDisabled: remainStaAds <= 0 || staFull,
-      onPlusClick: claimStaminaAd,
-    }, claimStaminaAd);
+      onPlusClick: adsOn ? claimStaminaAd : null,
+    }, adsOn ? claimStaminaAd : null);
 
     // 5. 缚兽索/金索胶囊
     const ropeTxt = (st.goldRopes || 0) > 0
@@ -633,16 +634,17 @@
       App.Main.goScene('warehouse');
     });
     drawFeatureBadge(ctx, 'arena', 'icon_arena', leftX0 + stepX * 2, row1Y, '演武场', (st.arenaTickets || 0) > 0, time, 'arena');
+    const supIdleReady = ownedBeastCnt >= 2 && (st.supportBeastIds || []).filter((id) => id && st.ownedBeasts[id] && id !== st.activeBeastId).length < Math.min(2, ownedBeastCnt - (st.activeBeastId ? 1 : 0));
     drawFloatingImageBadge(
       ctx,
       'icon_beast_sanctuary',
       leftX0 + stepX * 3,
       row1Y,
       '四象兽栏',
-      ownedBeastCnt > 0 && !st.activeBeastId,
+      (ownedBeastCnt > 0 && !st.activeBeastId) || supIdleReady,
       time,
-      () => App.Main.goScene('beast'),
-      st.activeBeastId ? '上阵中' : ''
+      () => App.Main.goScene('beast', supIdleReady && st.activeBeastId ? { subTab: 'guard' } : undefined),
+      st.activeBeastId ? '上阵中' : (supIdleReady ? '可护法' : '')
     );
     drawFeatureBadge(ctx, 'hire', 'icon_hire', leftX0 + stepX * 4, row1Y, '聚贤佣馆', false, time, 'hire', '', '佣');
     drawFloatingImageBadge(ctx, 'icon_mail', leftX0 + stepX * 5, row1Y, '邮件公告', App.API.hasUnclaimedMail(), time, () => {
@@ -680,14 +682,15 @@
     );
     drawFeatureBadge(ctx, 'rank', 'icon_rank', leftX0 + stepX * 4, row2Y, '风云榜', false, time, 'rank', '', '榜');
     const pInfo = App.State.getPatrolInfo ? App.State.getPatrolInfo() : { canClaim: false, freeQuickLeft: 0, mins: 0 };
-    const patrolTag = pInfo.mins >= 60 ? `${Math.floor(pInfo.mins / 60)}h待领` : (pInfo.freeQuickLeft > 0 ? '免费巡防' : '');
+    const govReady = !!(pInfo.gov && pInfo.gov.canAutoAssign);
+    const patrolTag = pInfo.mins >= 60 ? `${Math.floor(pInfo.mins / 60)}h待领` : (pInfo.freeQuickLeft > 0 ? '免费巡防' : (govReady ? '可任太守' : ''));
     drawFloatingImageBadge(
       ctx,
       'res_gold',
       leftX0 + stepX * 5,
       row2Y,
       '九州岁贡',
-      pInfo.freeQuickLeft > 0 || pInfo.mins >= 30,
+      pInfo.freeQuickLeft > 0 || pInfo.mins >= 30 || govReady,
       time,
       () => { showPatrolModal = true; },
       patrolTag,
@@ -855,7 +858,9 @@
 
     // ★ 首页底部出战栏专属【排兵布阵】按钮（下方仅在有神兽上阵时展示「白虎已上阵」，无神兽上阵时不展示）
     const hasActiveBeast = !!(st.activeBeastId && st.ownedBeasts && st.ownedBeasts[st.activeBeastId] && App.Config.BEASTS[st.activeBeastId]);
-    const beastSubText = hasActiveBeast ? `${App.Config.BEASTS[st.activeBeastId].shortName}已上阵` : undefined;
+    const beastSubText = hasActiveBeast
+      ? `${App.Config.getBeastDisplayName ? App.Config.getBeastDisplayName(st.activeBeastId, st.ownedBeasts[st.activeBeastId], true) : App.Config.BEASTS[st.activeBeastId].shortName}已上阵`
+      : undefined;
     App.UI.drawButton(ctx, deployBtnX, cardY + 9, deployBtnW, 52, '排兵布阵', {
       r: 9,
       grad: ['#7c2d12', '#451a03'],
@@ -866,17 +871,23 @@
 
     const staCost = App.State.getStaminaCost(sel.staminaCost);
     const hasSta = st.stamina >= staCost;
+    const adsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
+    const showAdSta = !hasSta && adsOn;
     const adStaGain = App.State.getAdRewardAmount ? App.State.getAdRewardAmount('stamina', 'stamina') : 20;
     if (selCleared) {
-      App.UI.drawButton(ctx, primaryBtnX, cardY + 9, 102, 52, hasSta ? '扫 荡' : '补粮草', {
+      App.UI.drawButton(ctx, primaryBtnX, cardY + 9, 102, 52, showAdSta ? '补粮草' : '扫 荡', {
         r: 9,
-        icon: hasSta ? 'sweep' : undefined,
-        grad: hasSta ? ['#c86d19', '#85420e'] : ['#9a4412', '#5c2408'],
+        icon: showAdSta ? undefined : 'sweep',
+        grad: showAdSta ? ['#9a4412', '#5c2408'] : ['#c86d19', '#85420e'],
         border: '#fde68a',
         fontSize: 14,
-        subText: hasSta ? `耗${staCost}粮秒领` : `+${adStaGain}粮草`,
+        subText: showAdSta ? `+${adStaGain}粮草` : `耗${staCost}粮秒领`,
       }, () => {
         if (!hasSta) {
+          if (!adsOn) {
+            App.UI.showToast('粮草体力不足，请等待恢复或前往军备仓库使用行军粮草丹！', '#fbbf24');
+            return;
+          }
           App.Platform.showRewardedAd('stamina', `观看激励视频，立刻恢复 +${adStaGain} 粮草体力！`, () => {
             App.State.claimAd('stamina');
           });
@@ -891,9 +902,13 @@
         grad: ['#b91c1c', '#7f1d1d'],
         border: '#fde68a',
         fontSize: 13.5,
-        subText: !bossOwnedOrHosted ? `生擒·${boss.name}` : (hasSta ? `耗 ${staCost} 粮草` : `+${adStaGain}粮草`),
+        subText: !bossOwnedOrHosted ? `生擒·${boss.name}` : (showAdSta ? `+${adStaGain}粮草` : `耗 ${staCost} 粮草`),
       }, () => {
         if (!hasSta) {
+          if (!adsOn) {
+            App.UI.showToast('粮草体力不足，请等待恢复或前往军备仓库使用行军粮草丹！', '#fbbf24');
+            return;
+          }
           App.Platform.showRewardedAd('stamina', `粮草不足！观看激励视频立即恢复 +${adStaGain} 粮草并再次征战！`, () => {
             App.State.claimAd('stamina').then((res) => {
               if (res && res.ok) App.Main.startBattle('city', sel.order, { level: sel });
@@ -904,16 +919,20 @@
         App.Main.startBattle('city', sel.order, { level: sel });
       });
     } else {
-      App.UI.drawButton(ctx, primaryBtnX, cardY + 9, 112, 52, !selUnlocked ? '未解锁' : (hasSta ? '击鼓应战' : '补粮草'), {
+      App.UI.drawButton(ctx, primaryBtnX, cardY + 9, 112, 52, !selUnlocked ? '未解锁' : (showAdSta ? '补粮草' : '击鼓应战'), {
         r: 9,
         icon: !selUnlocked ? 'lock' : undefined,
-        grad: hasSta ? ['#b91c1c', '#7f1d1d'] : ['#9a4412', '#5c2408'],
+        grad: showAdSta ? ['#9a4412', '#5c2408'] : ['#b91c1c', '#7f1d1d'],
         border: '#fde68a',
         fontSize: 14,
-        subText: !selUnlocked ? `先通第${sel.order - 1}关` : (hasSta ? `耗 ${staCost} 粮草` : `+${adStaGain}粮草`),
+        subText: !selUnlocked ? `先通第${sel.order - 1}关` : (showAdSta ? `+${adStaGain}粮草` : `耗 ${staCost} 粮草`),
         disabled: !selUnlocked,
       }, () => {
         if (!hasSta) {
+          if (!adsOn) {
+            App.UI.showToast('粮草体力不足，请等待恢复或前往军备仓库使用行军粮草丹！', '#fbbf24');
+            return;
+          }
           App.Platform.showRewardedAd('stamina', `观看激励视频，立刻恢复 +${adStaGain} 粮草体力！`, () => {
             App.State.claimAd('stamina');
           });
@@ -957,23 +976,24 @@
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
 
-    const mw = 560, mh = 324;
+    const mw = 684, mh = 438;
     const mx = Math.round((W - mw) / 2), my = Math.round((H - mh) / 2) + 8;
-    // 与全游戏统一的古风羊皮卷 + 紫檀木牌匾风格（移除违和的纯绿按钮、荧光紫绿框与彩色 Emoji）
+    const gov = p.gov || (App.State.getGovernorInfo ? App.State.getGovernorInfo() : { slots: [], openCount: 0, activeCount: 0, idleCount: 0, canAutoAssign: false, totalBonusPct: 0, matBonusPct: 0 });
+
     App.UI.drawPanel(ctx, mx, my, mw, mh, { r: 16, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2.6 });
     App.UI.drawPanel(ctx, mx + 8, my + 8, mw - 16, mh - 16, { r: 12, bg: '#faf0d7', border: '#c9a368', lineWidth: 1.2 });
-    App.UI.drawWoodHeader(ctx, mx + 16, my + 14, mw - 32, 40);
+    App.UI.drawWoodHeader(ctx, mx + 16, my + 12, mw - 32, 38);
 
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fef08a';
-    ctx.font = 'bold 17px "PingFang SC", serif';
-    ctx.fillText('九州城池岁贡 · 离线军饷', W / 2 - 42, my + 34);
+    ctx.font = 'bold 16.5px "PingFang SC", serif';
+    ctx.fillText('九州城池岁贡 · 离线军饷 & 六督府太守委任', W / 2 - 48, my + 31);
     ctx.restore();
 
     const staSubCnt = (App.API && App.API.getSubscribeQuota) ? App.API.getSubscribeQuota('stamina') : 0;
-    App.UI.drawButton(ctx, mx + mw - 134, my + 20, 110, 28, staSubCnt > 0 ? `已订满体(${staSubCnt})` : '满体微信提醒', {
+    App.UI.drawButton(ctx, mx + mw - 136, my + 17, 112, 28, staSubCnt > 0 ? `已订满体(${staSubCnt})` : '满体微信提醒', {
       r: 7, grad: staSubCnt > 0 ? ['#15803d', '#166534'] : ['#0369a1', '#0c4a6e'], border: '#fde68a', fontSize: 10.5,
     }, () => {
       if (App.API && App.API.subscribeNotice) App.API.subscribeNotice('stamina');
@@ -983,30 +1003,27 @@
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = '#5c2c16';
-    ctx.font = 'bold 12px "PingFang SC", sans-serif';
-    ctx.fillText(`已收复关隘 ${p.cleared} 座  ·  每攻克新城池永久提升挂机产出速率`, W / 2, my + 74);
-
-    ctx.fillStyle = '#92400e';
-    ctx.font = '11.5px "PingFang SC", sans-serif';
-    ctx.fillText(`当前岁贡速率：+${p.goldPerHour} 铜钱/时  ·  +${p.soulPerHour} 将魂/时  ·  +${p.expPerHour} 主公经验/时`, W / 2, my + 93);
+    ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
+    const govExtraTxt = gov.totalBonusPct > 0 ? `  ·  ★太守加成 +${gov.totalBonusPct}% 岁贡 / +${gov.matBonusPct}% 灵材掉率` : '';
+    ctx.fillText(`已收复关隘 ${p.cleared} 座  ·  +${p.goldPerHour} 铜钱/时  ·  +${p.soulPerHour} 将魂/时  ·  +${p.expPerHour} 经验/时${govExtraTxt}`, W / 2, my + 67, mw - 44);
 
     // 累计时长进度条
     const pct = Math.min(1, p.hrs / Math.max(1, p.maxHours));
     ctx.fillStyle = 'rgba(69, 26, 3, 0.86)';
-    App.UI.roundRect(ctx, mx + 36, my + 102, mw - 72, 18, 9);
+    App.UI.roundRect(ctx, mx + 24, my + 75, mw - 48, 16, 8);
     ctx.fill();
     if (pct > 0) {
-      const pg = ctx.createLinearGradient(mx + 36, my + 102, mx + 36 + (mw - 72) * pct, my + 102);
+      const pg = ctx.createLinearGradient(mx + 24, my + 75, mx + 24 + (mw - 48) * pct, my + 75);
       pg.addColorStop(0, '#b45309');
       pg.addColorStop(1, '#f59e0b');
       ctx.fillStyle = pg;
-      App.UI.roundRect(ctx, mx + 36, my + 102, Math.max(16, Math.round((mw - 72) * pct)), 18, 9);
+      App.UI.roundRect(ctx, mx + 24, my + 75, Math.max(16, Math.round((mw - 48) * pct)), 16, 8);
       ctx.fill();
     }
     ctx.fillStyle = '#fffbeb';
-    ctx.font = 'bold 10.5px "PingFang SC", sans-serif';
+    ctx.font = 'bold 10px "PingFang SC", sans-serif';
     const timeStr = p.mins >= 60 ? `${Math.floor(p.mins / 60)}小时${p.mins % 60}分` : `${p.mins}分钟`;
-    ctx.fillText(`已积蓄 ${timeStr}（上限 ${p.maxHours} 小时，满 ${p.minClaimMinutes} 分钟可领）`, W / 2, my + 115);
+    ctx.fillText(`已积蓄 ${timeStr}（上限 ${p.maxHours} 小时，满 ${p.minClaimMinutes} 分钟可领）`, W / 2, my + 87);
     ctx.restore();
 
     const cards = [
@@ -1015,21 +1032,110 @@
       { icon: 'res_stage', title: `经验 +${p.exp}`, sub: p.boxes > 0 ? `附赠宝箱×${p.boxes}` : '每满3h掉宝箱', border: '#9a5b25', col: '#451a03' },
     ];
     cards.forEach((c, idx) => {
-      const cw = 152, ch = 96, cx = mx + 34 + idx * 170, cy = my + 130;
-      App.UI.drawPanel(ctx, cx, cy, cw, ch, { r: 10, bg: '#efe1be', border: c.border, lineWidth: 1.5 });
-      App.UI.drawMiniIcon(ctx, c.icon, cx + (cw - 38) / 2, cy + 10, 38);
+      const cw = 204, ch = 64, cx = mx + 24 + idx * 216, cy = my + 98;
+      App.UI.drawPanel(ctx, cx, cy, cw, ch, { r: 9, bg: '#efe1be', border: c.border, lineWidth: 1.4 });
+      App.UI.drawMiniIcon(ctx, c.icon, cx + 12, cy + 13, 38);
       ctx.save();
-      ctx.textAlign = 'center';
+      ctx.textAlign = 'left';
       ctx.fillStyle = c.col;
-      ctx.font = 'bold 12.5px "PingFang SC", sans-serif';
-      ctx.fillText(c.title, cx + cw / 2, cy + 68);
+      ctx.font = 'bold 13px "PingFang SC", sans-serif';
+      ctx.fillText(c.title, cx + 58, cy + 29);
       ctx.fillStyle = '#78350f';
-      ctx.font = '10px "PingFang SC", sans-serif';
-      ctx.fillText(c.sub, cx + cw / 2, cy + 85);
+      ctx.font = '10.5px "PingFang SC", sans-serif';
+      ctx.fillText(c.sub, cx + 58, cy + 49);
       ctx.restore();
     });
 
-    App.UI.drawButton(ctx, mx + 28, my + mh - 66, 172, 46, p.canClaim ? '征收当前岁贡' : `满${p.minClaimMinutes}分钟可领`, {
+    // 九州六督府 · 闲置名将太守委任栏
+    const gx = mx + 20, gy = my + 170, gw = mw - 40, gh = 200;
+    App.UI.drawPanel(ctx, gx, gy, gw, gh, { r: 10, bg: '#ead7b0', border: '#9a5b25', lineWidth: 1.5 });
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#451a03';
+    ctx.font = 'bold 12.5px "PingFang SC", serif';
+    ctx.fillText(`九州六督府 · 闲置名将太守委任（已驻 ${gov.activeCount}/${gov.openCount} 府 · 闲置可派 ${gov.idleCount} 将）`, gx + 12, gy + 22);
+    ctx.fillStyle = '#78350f';
+    ctx.font = '10.5px "PingFang SC", sans-serif';
+    ctx.fillText('未上阵名将入驻督府可大幅提高岁贡铜钱将魂，每入驻 1 府额外提升主线与扫荡法宝灵材掉率 +1.5%！', gx + 12, gy + 40, gw - 166);
+    ctx.restore();
+
+    App.UI.drawButton(ctx, gx + gw - 148, gy + 10, 136, 28, '⚡ 一键委任最优良将', {
+      r: 7, grad: ['#c86d19', '#85420e'], border: '#fef08a', fontSize: 10.5,
+      disabled: App.State.isBusy() || (gov.idleCount <= 0 && gov.activeCount >= gov.openCount),
+    }, () => {
+      App.State.assignGovernor(1, null, true);
+    });
+
+    const pickBestIdleForSlot = () => {
+      const depSet = new Set(st.deployIds || []);
+      const usedSet = new Set((gov.slots || []).map((s) => s.generalId).filter(Boolean));
+      const cands = Object.keys(st.ownedGenerals || {}).filter((id) => !depSet.has(id) && !usedSet.has(id) && App.Config.GENERALS[id]);
+      if (!cands.length) return null;
+      cands.sort((a, b) => (App.State.getGovernorRateFor(b) - App.State.getGovernorRateFor(a)));
+      return cands[0];
+    };
+
+    (gov.slots || []).forEach((sl, idx) => {
+      const sw = 100, sh = 140;
+      const sx = gx + 10 + idx * 105;
+      const sy = gy + 49;
+      const gCfg = sl.generalId ? App.Config.GENERALS[sl.generalId] : null;
+      App.UI.drawPanel(ctx, sx, sy, sw, sh, {
+        r: 8,
+        bg: !sl.unlocked ? 'rgba(120, 113, 108, 0.22)' : (gCfg ? '#2f170b' : '#f7ebd2'),
+        border: !sl.unlocked ? '#a8a29e' : (gCfg ? '#d97706' : '#b45309'),
+        lineWidth: gCfg ? 1.8 : 1.2,
+      });
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = !sl.unlocked ? '#78716c' : (gCfg ? '#fde68a' : '#78350f');
+      ctx.font = 'bold 10px "PingFang SC", sans-serif';
+      ctx.fillText(sl.name, sx + sw / 2, sy + 16, sw - 8);
+
+      if (!sl.unlocked) {
+        ctx.fillStyle = '#78716c';
+        ctx.font = 'bold 18px sans-serif';
+        ctx.fillText('🔒', sx + sw / 2, sy + 64);
+        ctx.font = '10px "PingFang SC", sans-serif';
+        ctx.fillText(`破第${sl.unlockOrder}关开启`, sx + sw / 2, sy + 96);
+      } else if (gCfg) {
+        App.Portraits.drawGeneralPortrait(ctx, sl.generalId, sx + 23, sy + 24, 54, { radius: 8, lineWidth: 1.5 });
+        ctx.fillStyle = '#fef08a';
+        ctx.font = 'bold 11px "PingFang SC", sans-serif';
+        ctx.fillText(gCfg.name, sx + sw / 2, sy + 94, sw - 8);
+        ctx.fillStyle = '#4ade80';
+        ctx.font = 'bold 10px "PingFang SC", sans-serif';
+        ctx.fillText(`岁贡+${Math.round((sl.rate || 0) * 100)}%`, sx + sw / 2, sy + 111);
+        ctx.fillStyle = '#fca5a5';
+        ctx.font = '9.5px "PingFang SC", sans-serif';
+        ctx.fillText('点击卸任', sx + sw / 2, sy + 129);
+      } else {
+        ctx.fillStyle = '#b45309';
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText('＋', sx + sw / 2, sy + 64);
+        ctx.fillStyle = '#78350f';
+        ctx.font = '10px "PingFang SC", sans-serif';
+        ctx.fillText(gov.idleCount > 0 ? '点击派将入驻' : '暂无闲置武将', sx + sw / 2, sy + 100, sw - 8);
+      }
+      ctx.restore();
+
+      if (sl.unlocked) {
+        App.UI.addHit(sx, sy, sw, sh, () => {
+          if (sl.generalId) {
+            App.State.assignGovernor(sl.slot, null, false);
+          } else {
+            const bestGid = pickBestIdleForSlot();
+            if (!bestGid) {
+              App.UI.showToast('当前没有未上阵的闲置名将可供委任，快去攻城招降吧！', '#fbbf24');
+              return;
+            }
+            App.State.assignGovernor(sl.slot, bestGid, false);
+          }
+        });
+      }
+    });
+
+    App.UI.drawButton(ctx, mx + 24, my + mh - 58, 198, 44, p.canClaim ? '征收当前岁贡' : `满${p.minClaimMinutes}分钟可领`, {
       r: 10,
       icon: p.canClaim ? 'tribute' : undefined,
       grad: p.canClaim ? ['#b91c1c', '#7f1d1d'] : ['#78716c', '#57534e'],
@@ -1038,8 +1144,9 @@
       disabled: !p.canClaim,
     }, () => App.State.claimPatrol(false, false));
 
+    const patrolAdsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
     if (p.freeQuickLeft > 0) {
-      App.UI.drawButton(ctx, mx + 210, my + mh - 66, 206, 46, `免费快速巡防 ${p.quickHours}h`, {
+      App.UI.drawButton(ctx, mx + 232, my + mh - 58, 256, 44, `免费快速巡防 ${p.quickHours}h`, {
         r: 10,
         icon: 'sweep',
         grad: ['#c86d19', '#85420e'],
@@ -1047,17 +1154,22 @@
         fontSize: 12.5,
         subText: `立得 +${p.quickGold}铜钱 +宝箱×1`,
       }, () => App.State.claimPatrol(true, false));
-    } else {
-      App.UI.drawAdButton(ctx, mx + 210, my + mh - 66, 206, 46, p.adLeft > 0 ? `快速巡防${p.quickHours}h (+${p.quickGold}钱)` : '今日巡防已满', {
+    } else if (patrolAdsOn) {
+      App.UI.drawAdButton(ctx, mx + 232, my + mh - 58, 256, 44, p.adLeft > 0 ? `快速巡防${p.quickHours}h (+${p.quickGold}钱)` : '今日巡防已满', {
         r: 10, fontSize: 11.5, disabled: p.adLeft <= 0,
       }, () => {
         App.Platform.showRewardedAd('stamina', `观看激励视频，立即征收 ${p.quickHours} 小时九州岁贡与关卡宝箱！`, () => {
           App.State.claimPatrol(true, true);
         });
       });
+    } else {
+      App.UI.drawButton(ctx, mx + 232, my + mh - 58, 256, 44, '今日快速巡防已用', {
+        r: 10, grad: ['#78716c', '#57534e'], border: '#a8a29e', fontSize: 12.5,
+        subText: '明日零点自动重置免费次数', disabled: true,
+      });
     }
 
-    App.UI.drawButton(ctx, mx + 426, my + mh - 66, 106, 46, '返回地图', {
+    App.UI.drawButton(ctx, mx + 498, my + mh - 58, 162, 44, '返回地图', {
       r: 10, grad: ['#6b3417', '#431d0b'], border: '#d4a34b', fontSize: 13,
     }, () => { showPatrolModal = false; });
   }
@@ -1079,18 +1191,27 @@
     const mx = 26, my = 58, mw = W - 52, mh = 472;
     App.UI.drawPanel(ctx, mx, my, mw, mh, { r: 14, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2.4 });
 
-    // 1. 顶部点将台木匾标题栏
+    // 1. 顶部点将台木匾标题栏（实时展示阵营共鸣与宿命羁绊激活状态）
+    const lb = App.State.getLineupBondSummary ? App.State.getLineupBondSummary() : { activeFaction: null, activeBonds: [] };
     App.UI.drawPanel(ctx, mx + 10, my + 8, mw - 20, 40, { r: 9, bg: '#451a03', border: '#d4a34b', lineWidth: 1.8 });
     ctx.save();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fef08a';
-    ctx.font = 'bold 15px "PingFang SC", serif';
-    ctx.fillText('九州点将台 · 排兵布阵', mx + 24, my + 28);
+    ctx.font = 'bold 14.5px "PingFang SC", serif';
+    ctx.fillText('九州点将台 · 排兵布阵', mx + 20, my + 28);
 
     ctx.fillStyle = '#fde047';
-    ctx.font = 'bold 12px "PingFang SC", sans-serif';
-    ctx.fillText(`出战英雄总战力：${heroPower}  （已上阵 ${deployIds.length}/${maxDep} 将）`, mx + 220, my + 28);
+    ctx.font = 'bold 11px "PingFang SC", sans-serif';
+    ctx.fillText(`英雄战力 ${heroPower} · 军团总战力 ${App.State.getTeamPower()} (${deployIds.length}/${maxDep}将)`, mx + 188, my + 20, 386);
+
+    const facBondStr = lb.activeFaction ? `★${lb.activeFaction.name || lb.activeFaction.label}` : '同阵营3人激活共鸣';
+    const heroBondStr = (lb.activeBonds && lb.activeBonds.length)
+      ? `羁绊：${lb.activeBonds.map((b) => '【' + b.name + '】').join('')}`
+      : '同阵名将激活宿命羁绊';
+    ctx.fillStyle = (lb.activeFaction || (lb.activeBonds && lb.activeBonds.length)) ? '#86efac' : '#fed7aa';
+    ctx.font = 'bold 10px "PingFang SC", sans-serif';
+    ctx.fillText(`${facBondStr}  |  ${heroBondStr}`, mx + 188, my + 36, 386);
     ctx.restore();
 
     // 一键最强上阵按钮（含已租用的在期佣将！）
@@ -1251,10 +1372,11 @@
     ctx.font = 'bold 10px "PingFang SC", sans-serif';
     ctx.fillText('随军四象神兽', bx + bw / 2, slotY + 16);
     if (curBeastCfg) {
+      const curBeastShort = App.Config.getBeastDisplayName ? App.Config.getBeastDisplayName(curBeastId, st.ownedBeasts[curBeastId], true) : curBeastCfg.shortName;
       App.Portraits.drawBeastPortrait(ctx, curBeastId, bx + (bw - 48) / 2, slotY + 22, 48, { radius: 8, border: curBeastCfg.glow, lineWidth: 1.6 });
       ctx.fillStyle = '#fef08a';
       ctx.font = 'bold 10.5px "PingFang SC", sans-serif';
-      ctx.fillText(`${curBeastCfg.shortName} · 战+${curBeastStats ? curBeastStats.power : 0}`, bx + bw / 2, slotY + 84, bw - 8);
+      ctx.fillText(`${curBeastShort} · 战+${curBeastStats ? curBeastStats.power : 0}`, bx + bw / 2, slotY + 84, bw - 8);
     } else {
       ctx.fillStyle = '#94a3b8';
       ctx.font = '10px "PingFang SC", sans-serif';
@@ -1275,7 +1397,8 @@
       const nextBid = cycle[nextIdx];
       App.State.setActiveBeast(nextBid).then((res) => {
         if (res.ok) {
-          App.UI.showToast(nextBid ? `已派【${App.Config.BEASTS[nextBid].name}】随军助阵！` : '神兽已切换为休息状态', '#fde047');
+          const nextName = nextBid && App.Config.getBeastDisplayName ? App.Config.getBeastDisplayName(nextBid, st.ownedBeasts[nextBid]) : (nextBid ? App.Config.BEASTS[nextBid].name : '');
+          App.UI.showToast(nextBid ? `已派【${nextName}】随军助阵！` : '神兽已切换为休息状态', '#fde047');
         }
       });
     });
@@ -1429,12 +1552,14 @@
 
     ctx.save();
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#78350f';
-    ctx.font = '10.5px "PingFang SC", sans-serif';
+    ctx.fillStyle = (lb.activeBonds && lb.activeBonds.length && selectedDeploySlot < 0) ? '#166534' : '#78350f';
+    ctx.font = 'bold 10.5px "PingFang SC", sans-serif';
     const hint = selectedDeploySlot >= 0 && deployIds[selectedDeploySlot]
       ? `正在替换【${selectedDeploySlot + 1}号阵位 · ${App.Config.GENERALS[deployIds[selectedDeploySlot]].name}】，点击下方任意未上阵名将即可一键换上！`
-      : '提示：上阵将领决定局内可派遣的兵营兵种，点击名将即可自由上下阵，顶部实时统计出战英雄战力！';
-    ctx.fillText(hint, W / 2, poolY + poolH - 10);
+      : ((lb.activeBonds && lb.activeBonds.length)
+        ? `★ 当前生效宿命羁绊：${lb.activeBonds.map((b) => `【${b.name}】(${b.desc})`).join('  ·  ')}`
+        : '提示：上阵将领决定局内派兵兵种，凑齐同阵营 3/4/5 将或桃园/五虎/五子/四督等组合享巨幅羁绊加成！');
+    ctx.fillText(hint, W / 2, poolY + poolH - 10, mw - 40);
     ctx.restore();
   }
 
@@ -1521,10 +1646,15 @@
     const canAgain = st.stamina >= sta1;
     const multiN = Math.min(5, Math.max(2, Math.floor((st.stamina || 0) / Math.max(1, sta1))));
     const canMulti = st.stamina >= sta1 * 2;
+    const sweepAdsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
     const adStaAmt = App.State.getAdRewardAmount ? App.State.getAdRewardAmount('stamina', 'stamina') : 20;
 
     const runSweep = (n) => {
       if (st.stamina < sta1) {
+        if (!sweepAdsOn) {
+          App.UI.showToast('粮草体力不足，请等待恢复或前往军备仓库使用行军粮草丹！', '#fbbf24');
+          return;
+        }
         App.Platform.showRewardedAd('stamina', `观看激励视频，立刻恢复 +${adStaAmt} 粮草体力！`, () => {
           App.State.claimAd('stamina');
         });
@@ -1536,9 +1666,9 @@
         App.UI.showToast(n > 1 ? `连扫 ${res.sweep.count || n} 次完成！战利品已入库！` : '连续扫荡完成！战利品已入库！', '#4ade80');
       });
     };
-    if (canAgain) {
+    if (canAgain || !sweepAdsOn) {
       App.UI.drawButton(ctx, mx + 22, my + mh - 62, 162, 44, `再扫1次 (${sta1}粮)`, {
-        r: 10, icon: 'sweep', grad: ['#c86d19', '#85420e'], border: '#fde68a', fontSize: 12.5,
+        r: 10, icon: 'sweep', grad: ['#c86d19', '#85420e'], border: '#fde68a', fontSize: 12.5, disabled: !canAgain,
       }, () => runSweep(1));
     } else {
       App.UI.drawAdButton(ctx, mx + 22, my + mh - 62, 162, 44, '免费补粮再扫', {

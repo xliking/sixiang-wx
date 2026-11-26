@@ -226,8 +226,13 @@
 
   function ownerLabel(eq) {
     const C = App.Config;
+    const st = App.State.get();
     if (eq.equippedBy) return (C.GENERALS[eq.equippedBy] || {}).name || '名将';
-    if (eq.equippedByBeast) return (C.BEASTS[eq.equippedByBeast] || {}).shortName || '神兽';
+    if (eq.equippedByBeast) {
+      return C.getBeastDisplayName
+        ? C.getBeastDisplayName(eq.equippedByBeast, st.ownedBeasts && st.ownedBeasts[eq.equippedByBeast], true)
+        : ((C.BEASTS[eq.equippedByBeast] || {}).shortName || '神兽');
+    }
     return '';
   }
 
@@ -807,6 +812,33 @@
     const rx = 432, ry = 118, rw = 504, rh = 400;
     drawStageBox(ctx, rx, ry, rw, rh, '#291708', '#150b03', '#f59e0b');
 
+    const idleBlueCnt = mats.filter((e) => C.EQUIP_TEMPLATES[e.tplId].quality === 'blue').length;
+    const idlePurpleCnt = mats.filter((e) => C.EQUIP_TEMPLATES[e.tplId].quality === 'purple').length;
+    App.UI.drawButton(ctx, rx + 14, ry + 10, 154, 26, `⚡ 批量合紫 (${Math.floor(idleBlueCnt / 3)}组)`, {
+      r: 13, grad: ['#0284c7', '#0c4a6e'], border: '#7dd3fc', fontSize: 10.5,
+      disabled: idleBlueCnt < 3 || App.State.isBusy(),
+    }, () => {
+      App.State.batchSynthesizeEquip('blue').then((res) => {
+        if (res.ok) {
+          synthUids = [];
+          lastForgedEquip = res.newEquip || (res.newEquips && res.newEquips[res.newEquips.length - 1]) || null;
+          triggerFlash();
+        }
+      });
+    });
+    App.UI.drawButton(ctx, rx + rw - 168, ry + 10, 154, 26, `⚡ 批量合金 (${Math.floor(idlePurpleCnt / 3)}组)`, {
+      r: 13, grad: ['#7e22ce', '#4c1d95'], border: '#e9d5ff', fontSize: 10.5,
+      disabled: idlePurpleCnt < 3 || App.State.isBusy(),
+    }, () => {
+      App.State.batchSynthesizeEquip('purple').then((res) => {
+        if (res.ok) {
+          synthUids = [];
+          lastForgedEquip = res.newEquip || (res.newEquips && res.newEquips[res.newEquips.length - 1]) || null;
+          triggerFlash();
+        }
+      });
+    });
+
     const centerX = rx + rw / 2, centerY = ry + 162;
     const slotCoords = [
       { x: centerX - 152, y: centerY - 26, label: '材料槽 · 壹' },
@@ -1057,6 +1089,7 @@
   }
 
   // ================================================================ 5. 洗炼专页：翠微灵玉洗炼盘
+  let confirmReforgeUid = null;
 
   function renderReforgePage(ctx, st) {
     const sel = renderEquipListPane(ctx, st, '#34d399');
@@ -1169,14 +1202,26 @@
     );
     ctx.restore();
 
-    App.UI.drawButton(ctx, rx + 22, ry + 320, rw - 44, 58, `✦ 淬灵洗炼词条`, {
+    const hasUnlockedRare = affixes.some((af) => af && !af.locked && (af.quality === 'gold' || af.quality === 'red'));
+    if (!hasUnlockedRare && confirmReforgeUid === sel.uid) confirmReforgeUid = null;
+    const needWarnConfirm = hasUnlockedRare && confirmReforgeUid === sel.uid;
+
+    App.UI.drawButton(ctx, rx + 22, ry + 320, rw - 44, 58, needWarnConfirm ? '⚠ 含未锁金/红珍稀词条 · 再点确认重洗' : '✦ 淬灵洗炼词条', {
       r: 10,
-      grad: ['#059669', '#064e3b'],
-      border: '#a7f3d0',
-      fontSize: 15.5,
+      grad: needWarnConfirm ? ['#dc2626', '#7f1d1d'] : ['#059669', '#064e3b'],
+      border: needWarnConfirm ? '#fef08a' : '#a7f3d0',
+      fontSize: needWarnConfirm ? 14 : 15.5,
       subText: `消耗 ${goldCost} 铜钱（存${st.gold}） + ${soulCost} 将魂（存${st.soul}）${oreCount > 0 ? ' + 1枚矿玉' : ''}`,
       disabled: App.State.isBusy(),
-    }, () => App.State.reforgeEquip(sel.uid).then((r) => { if (r.ok) triggerFlash(); }));
+    }, () => {
+      if (hasUnlockedRare && confirmReforgeUid !== sel.uid) {
+        confirmReforgeUid = sel.uid;
+        App.UI.showToast('检测到未锁定的【仙品金/绝世红】词条！建议先锁定，或再次点击确认重洗', '#fbbf24');
+        return;
+      }
+      confirmReforgeUid = null;
+      App.State.reforgeEquip(sel.uid).then((r) => { if (r.ok) triggerFlash(); });
+    });
   }
 
   // ================================================================ 6. 法宝专页：四象镇军万宝阁

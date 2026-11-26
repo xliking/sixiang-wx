@@ -7,9 +7,12 @@
     defend: 'dungeon_defend',
     pass: 'dungeon_pass',
     escort: 'dungeon_escort',
+    bazhen: 'dungeon_pass',
     chaos: 'dungeon_chaos',
     xian: 'dungeon_xian',
     mo: 'dungeon_mo',
+    beast_xian: 'dungeon_xian',
+    beast_mo: 'dungeon_mo',
   };
   const DEFAULT_ASCEND_CHALLENGES = {
     xian: {
@@ -26,9 +29,23 @@
       tierStepLv: 15, tierRewardStep: 0.35, maxTier: 5, healPct: 0.16,
       passes: [{ name: '修罗血池', generalId: 'zhangliao' }, { name: '炼狱魔殿', generalId: 'dianwei' }, { name: '九幽魔坛', generalId: 'lvbu' }],
     },
+    beast_xian: {
+      name: '神兽成神 · 万兽封神坛',
+      desc: '踏入太虚昆仑万兽封神坛迎战护道圣兽，必掉【万兽封神丹】【太初圣兽髓】，满关额外掉【神·凌霄瑞兽套】部件',
+      unlockLordLv: 20, minBeastLv: 120, minBeastStar: 10, staminaCost: 12, dailyLimit: 3, recommendedPower: 168000, enemyLv: 46, difficultyMult: 1,
+      tierStepLv: 15, tierRewardStep: 0.35, maxTier: 5, healPct: 0.22,
+      passes: [{ name: '东海神渊', beastId: 'qinglong' }, { name: '昆仑瑞境', beastId: 'qilin' }, { name: '太虚封神坛', beastId: 'zhulong' }],
+    },
+    beast_mo: {
+      name: '神兽成魔 · 洪荒魔兽渊',
+      desc: '深入洪荒九幽血海兽狱激战灭世凶兽，必掉【九幽化魔兽丹】【炼狱魔兽晶】，满关额外掉【魔·深渊凶神套】部件',
+      unlockLordLv: 20, minBeastLv: 120, minBeastStar: 10, staminaCost: 12, dailyLimit: 3, recommendedPower: 168000, enemyLv: 46, difficultyMult: 1,
+      tierStepLv: 15, tierRewardStep: 0.35, maxTier: 5, healPct: 0.18,
+      passes: [{ name: '西极煞渊', beastId: 'baihu' }, { name: '噬天魔窟', beastId: 'taotie' }, { name: '归墟魔兽坛', beastId: 'hundun' }],
+    },
   };
   const TIER_NAMES = ['初阶', '灵阶', '玄阶', '地阶', '天阶'];
-  let subTab = 'normal'; // normal | ascend
+  let subTab = 'normal'; // normal | ascend | beastAscend
   let chaosPick = false;
   let chaosPage = 0;
   let mainPage = 0;
@@ -37,7 +54,9 @@
     chaosPick = false;
     chaosPage = 0;
     mainPage = 0;
-    subTab = (params && params.tab === 'ascend') ? 'ascend' : 'normal';
+    if (params && params.tab) {
+      subTab = params.tab === 'beastAscend' ? 'beastAscend' : (params.tab === 'ascend' ? 'ascend' : 'normal');
+    }
   }
 
   function calcRealmTier(cfg, lordLv) {
@@ -61,7 +80,7 @@
         name: boss ? `混沌四象坛 · ${boss.name}` : `${cfg.name}（${rt.name}）`,
         order: 20 + effCfg.enemyLv,
         chapter: 12,
-        biome: mode === 'xian' ? 'snow' : ((mode === 'pass' || mode === 'mo') ? 'canyon' : 'plains'),
+        biome: (mode === 'xian' || mode === 'beast_xian') ? 'snow' : ((mode === 'pass' || mode === 'mo' || mode === 'beast_mo' || mode === 'bazhen') ? 'canyon' : 'plains'),
         battleKey: cfg.battleKey || undefined,
         recommendedLv: effCfg.enemyLv,
         difficultyMult: cfg.difficultyMult || 1,
@@ -116,6 +135,12 @@
         border: subTab === 'ascend' ? '#67e8f9' : '#a16207',
         fontSize: 12,
       }, () => { subTab = 'ascend'; });
+      App.UI.drawButton(ctx, 438, 72, 128, 30, '✦ 神兽神魔', {
+        r: 7,
+        grad: subTab === 'beastAscend' ? ['#0284c7', '#86198f'] : ['#5c2c16', '#3b1d0e'],
+        border: subTab === 'beastAscend' ? '#f472b6' : '#a16207',
+        fontSize: 12,
+      }, () => { subTab = 'beastAscend'; });
     } else {
       App.UI.drawButton(ctx, W - 168, 72, 84, 30, '◀ 返回秘境', {
         r: 7, bg: '#5c2c16', border: '#fde047', fontSize: 11,
@@ -171,30 +196,49 @@
       return;
     }
 
-    // 子界面：仙魔渡劫双副本（升仙副本 & 升魔副本，满高铺展至 y=520）
-    if (subTab === 'ascend') {
+    // 子界面：名将神魔渡劫 & 神兽神魔渡劫双副本（满高铺展至 y=520）
+    if (subTab === 'ascend' || subTab === 'beastAscend') {
+      const isBeastTab = subTab === 'beastAscend';
       const ac = C.ASCENSION || {};
-      const xianPill = ac.xianPillItem || 'ascend_xian_pill';
-      const xianSub = ac.xianSubItem || 'ascend_xian_jade';
-      const moPill = ac.moPillItem || 'ascend_mo_pill';
-      const moSub = ac.moSubItem || 'ascend_mo_crystal';
+      const xianPill = isBeastTab ? (ac.beastXianPillItem || 'beast_xian_pill') : (ac.xianPillItem || 'ascend_xian_pill');
+      const xianSub = isBeastTab ? (ac.beastXianSubItem || 'beast_xian_jade') : (ac.xianSubItem || 'ascend_xian_jade');
+      const moPill = isBeastTab ? (ac.beastMoPillItem || 'beast_mo_pill') : (ac.moPillItem || 'ascend_mo_pill');
+      const moSub = isBeastTab ? (ac.beastMoSubItem || 'beast_mo_crystal') : (ac.moSubItem || 'ascend_mo_crystal');
+      const pairModes = isBeastTab ? ['beast_xian', 'beast_mo'] : ['xian', 'mo'];
 
-      ['xian', 'mo'].forEach((mode, idx) => {
-        const isXian = mode === 'xian';
+      pairModes.forEach((mode, idx) => {
+        const isXian = mode === 'xian' || mode === 'beast_xian';
         const cfg = Object.assign({}, DEFAULT_ASCEND_CHALLENGES[mode], (C.CHALLENGES && C.CHALLENGES[mode]) || {});
         const w = 436, h = 404, x = 38 + idx * 448, y = 116;
-        const locked = (st.lordLevel || 1) < (cfg.unlockLordLv || 20);
+        const lordLocked = (st.lordLevel || 1) < (cfg.unlockLordLv || 20);
+        const minBeastLv = cfg.minBeastLv || (isBeastTab ? 120 : 0);
+        const minBeastStar = cfg.minBeastStar || (isBeastTab ? 10 : 0);
+        let bestBeastLv = 0, bestBeastStar = 0, beastQualified = !isBeastTab;
+        if (isBeastTab) {
+          Object.values(st.ownedBeasts || {}).forEach((ob) => {
+            if (!ob) return;
+            const blv = ob.lv || 1, bst = ob.star || 1;
+            if (blv >= minBeastLv && bst >= minBeastStar) beastQualified = true;
+            if (blv * 20 + bst > bestBeastLv * 20 + bestBeastStar) {
+              bestBeastLv = blv;
+              bestBeastStar = bst;
+            }
+          });
+        }
+        const locked = lordLocked || !beastQualified;
         const left = Math.max(0, (cfg.dailyLimit || 3) - (counts[mode] || 0));
         const rt = calcRealmTier(cfg, st.lordLevel || 1);
-        const baseRec = App.Config.scaleRecommendedPower(mode, cfg.recommendedPower || 96000, cfg);
+        const baseRec = App.Config.scaleRecommendedPower(mode, cfg.recommendedPower || (isBeastTab ? 168000 : 96000), cfg);
         const recPower = Math.round(baseRec * (1 + (rt.tier - 1) * 0.25));
         const canBeat = myPower >= recPower;
         const cleared = !!(st.clearedLevels && st.clearedLevels[mode]);
 
         const pillId = isXian ? xianPill : moPill;
         const subId = isXian ? xianSub : moSub;
-        const pillName = (C.ITEMS[pillId] && C.ITEMS[pillId].name) || (isXian ? '九转封神丹' : '九幽化魔丹');
-        const subName = (C.ITEMS[subId] && C.ITEMS[subId].name) || (isXian ? '太初神灵髓' : '炼狱魔煞晶');
+        const pillName = (C.ITEMS[pillId] && C.ITEMS[pillId].name)
+          || (isBeastTab ? (isXian ? '万兽封神丹' : '九幽化魔兽丹') : (isXian ? '九转封神丹' : '九幽化魔丹'));
+        const subName = (C.ITEMS[subId] && C.ITEMS[subId].name)
+          || (isBeastTab ? (isXian ? '太初圣兽髓' : '炼狱魔兽晶') : (isXian ? '太初神灵髓' : '炼狱魔煞晶'));
         const pillCnt = App.State.getItemCount(pillId);
         const subCnt = App.State.getItemCount(subId);
 
@@ -224,6 +268,14 @@
         ctx.fillStyle = ig;
         ctx.fillRect(ix, iy, iw, ih);
         ctx.restore();
+
+        // 神兽神魔副本：在横幅中央叠绘镇坛神兽立绘圆章，一眼区分于名将渡劫副本
+        if (isBeastTab) {
+          const bossBid = isXian ? 'qinglong' : 'baihu';
+          App.Portraits.drawBeastPortrait(ctx, bossBid, x + w / 2 - 28, iy + 18, 56, {
+            radius: 28, border: isXian ? '#67e8f9' : '#f472b6', lineWidth: 2.2, raw: true, ascend: isXian ? 'xian' : 'mo',
+          });
+        }
 
         ctx.save();
         App.UI.roundRect(ctx, ix, iy, iw, ih, 9);
@@ -256,10 +308,14 @@
         ctx.fillStyle = isXian ? '#67e8f9' : '#f472b6';
         ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
         ctx.fillText(
-          isXian
-            ? '✦ 成神飞升（等级.神）：三维暴涨 + 高额免伤 + 绝技增伤 + 开局神力'
-            : '✦ 成魔觉醒（等级.魔）：三维暴涨 + 毁灭暴伤 + 嗜血吸取 + 狂暴攻速',
-          x + w / 2, y + 228
+          isBeastTab
+            ? (isXian
+              ? '✦ 神兽化神（神.苍穹青龙等）：三维暴涨 + 高额免伤 + 契约增幅'
+              : '✦ 神兽入魔（魔.苍穹青龙等）：三维暴涨 + 毁灭暴伤 + 契约增幅')
+            : (isXian
+              ? '✦ 成神飞升（等级.神）：三维暴涨 + 高额免伤 + 绝技增伤 + 开局神力'
+              : '✦ 成魔觉醒（等级.魔）：三维暴涨 + 毁灭暴伤 + 嗜血吸取 + 狂暴攻速'),
+          x + w / 2, y + 228, w - 28
         );
 
         ctx.fillStyle = 'rgba(0, 0, 0, 0.48)';
@@ -274,28 +330,50 @@
         ctx.fillText(`推荐战力 ${recPower}   |   今日余 ${left}/${cfg.dailyLimit || 3} 次`, x + w / 2, y + 306);
         ctx.restore();
 
-        App.UI.drawButton(ctx, x + 16, y + h - 68, 262, 50, locked ? `主公 Lv.${cfg.unlockLordLv} 开启` : (left > 0 ? (isXian ? '⚡ 登台渡神劫' : '🔥 入渊渡魔劫') : '今日渡劫次数已尽'), {
-          r: 10,
-          grad: isXian ? ['#0284c7', '#0f4c5c'] : ['#be185d', '#581c87'],
-          border: '#fef08a',
-          fontSize: 14,
-          subText: locked || left <= 0 ? undefined : `耗 ${App.State.getStaminaCost(cfg.staminaCost || 12)} 粮草 · 掉丹髓+${isXian ? '神·套装' : '魔·套装'}`,
-          disabled: locked || left <= 0,
-        }, () => start(mode, cfg));
+        const mainBtnLabel = lordLocked
+          ? `主公 Lv.${cfg.unlockLordLv} 开启`
+          : (!beastQualified
+            ? `🔒 需${minBeastLv}级·${minBeastStar}★神兽`
+            : (left > 0
+              ? (isBeastTab ? (isXian ? '⚡ 登坛渡兽神劫' : '🔥 入渊渡兽魔劫') : (isXian ? '⚡ 登台渡神劫' : '🔥 入渊渡魔劫'))
+              : '今日渡劫次数已尽'));
+        const mainBtnSub = !locked && left > 0
+          ? `耗 ${App.State.getStaminaCost(cfg.staminaCost || 12)} 粮草 · 掉丹髓+${isBeastTab ? (isXian ? '神·兽装' : '魔·兽装') : (isXian ? '神·套装' : '魔·套装')}`
+          : (isBeastTab && !beastQualified
+            ? (bestBeastLv > 0 ? `当前最高 Lv.${bestBeastLv}·${bestBeastStar}★` : '需先收服并培养神兽')
+            : undefined);
 
-        App.UI.drawButton(ctx, x + 288, y + h - 68, 132, 50, '去名将营飞升', {
+        App.UI.drawButton(ctx, x + 16, y + h - 68, 262, 50, mainBtnLabel, {
+          r: 10,
+          grad: locked ? ['#475569', '#334155'] : (isXian ? ['#0284c7', '#0f4c5c'] : ['#be185d', '#581c87']),
+          border: locked ? '#94a3b8' : '#fef08a',
+          fontSize: 13.5,
+          subText: mainBtnSub,
+          disabled: lordLocked || (beastQualified && left <= 0),
+        }, () => {
+          if (isBeastTab && !beastQualified) {
+            App.UI.showToast(`神兽觉醒至 ${minBeastStar}★ 且等级达到 Lv.${minBeastLv} 后，即可挑战【${cfg.name}】！`, '#fbbf24');
+            return;
+          }
+          start(mode, cfg);
+        });
+
+        App.UI.drawButton(ctx, x + 288, y + h - 68, 132, 50, isBeastTab ? '去万兽栏飞升' : '去名将营飞升', {
           r: 10,
           grad: ['#d97706', '#92400e'],
           border: '#fde68a',
           fontSize: 12.5,
-          subText: 'Lv.150满级可用',
-        }, () => App.Main.goScene('roster', { openAscend: true }));
+          subText: isBeastTab ? `${minBeastLv}级${minBeastStar}★可用` : 'Lv.150满级可用',
+        }, () => {
+          if (isBeastTab) App.Main.goScene('beast', { openAscend: true });
+          else App.Main.goScene('roster', { openAscend: true });
+        });
       });
       return;
     }
 
     // 主界面：6 大秘境（2行×3列饱满大卡铺满 y=116..520，超过6个用左右侧翻页）
-    const modes = Object.keys(C.CHALLENGES).filter((m) => m !== 'xian' && m !== 'mo').sort((a, b) => (C.CHALLENGES[a].order || 0) - (C.CHALLENGES[b].order || 0));
+    const modes = Object.keys(C.CHALLENGES).filter((m) => m !== 'xian' && m !== 'mo' && m !== 'beast_xian' && m !== 'beast_mo').sort((a, b) => (C.CHALLENGES[a].order || 0) - (C.CHALLENGES[b].order || 0));
     const pageSize = 6;
     const totalPages = Math.max(1, Math.ceil(modes.length / pageSize));
     mainPage = Math.max(0, Math.min(mainPage, totalPages - 1));
@@ -313,8 +391,8 @@
       const canBeat = myPower >= recPower;
       const [title, sub] = String(cfg.name || mode).split(' · ');
 
-      App.UI.drawPanel(ctx, x, y, cw, ch, { r: 12, bg: '#32190b', border: '#c28538', lineWidth: 1.8 });
-      App.UI.drawPanel(ctx, x + 3, y + 3, cw - 6, ch - 6, { r: 9, bg: '#261207', border: 'rgba(254, 240, 138, 0.20)', lineWidth: 1 });
+      App.UI.drawPanel(ctx, x, y, cw, ch, { r: 12, bg: mode === 'bazhen' ? '#241038' : '#32190b', border: mode === 'bazhen' ? '#c084fc' : '#c28538', lineWidth: 1.8 });
+      App.UI.drawPanel(ctx, x + 3, y + 3, cw - 6, ch - 6, { r: 9, bg: mode === 'bazhen' ? '#190a29' : '#261207', border: 'rgba(254, 240, 138, 0.20)', lineWidth: 1 });
 
       // 左侧手绘秘境景窗 (112 × 174)
       const art = App.Assets.get(cfg.imgKey || ART_KEY[mode] || 'dungeon_tomb');
@@ -337,17 +415,17 @@
 
       ctx.save();
       App.UI.roundRect(ctx, ix, iy, iw, ih, 8);
-      ctx.strokeStyle = '#d97706';
+      ctx.strokeStyle = mode === 'bazhen' ? '#c084fc' : '#d97706';
       ctx.lineWidth = 1.4;
       ctx.stroke();
 
-      ctx.fillStyle = 'rgba(120, 53, 15, 0.92)';
+      ctx.fillStyle = mode === 'bazhen' ? 'rgba(88, 28, 135, 0.92)' : 'rgba(120, 53, 15, 0.92)';
       App.UI.roundRect(ctx, ix + 4, iy + 4, iw - 8, 20, 5);
       ctx.fill();
       ctx.textAlign = 'center';
       ctx.fillStyle = '#fef08a';
       ctx.font = 'bold 9.5px "PingFang SC", sans-serif';
-      ctx.fillText(locked ? `Lv.${cfg.unlockLordLv}开启` : `${rt.name} · 赏×${rt.rewardMult.toFixed(2)}`, ix + iw / 2, iy + 17.5);
+      ctx.fillText(locked ? `Lv.${cfg.unlockLordLv}开启` : (mode === 'bazhen' ? '奇策肉鸽 · 5门闯关' : `${rt.name} · 赏×${rt.rewardMult.toFixed(2)}`), ix + iw / 2, iy + 17.5);
 
       if (sub) {
         ctx.fillStyle = '#fde68a';
@@ -380,7 +458,7 @@
       const fourSymbols = C.FOUR_SYMBOL_BEAST_IDS || ['qinglong', 'zhuque', 'xuanwu', 'baihu'];
       App.UI.drawButton(ctx, rx, y + ch - 50, rw, 38, locked ? `主公 Lv.${cfg.unlockLordLv} 解锁` : (left > 0 ? `击鼓出征 · ${App.State.getStaminaCost(cfg.staminaCost)}粮` : '今日已战毕'), {
         r: 9,
-        grad: mode === 'chaos' ? ['#9a3412', '#581c87'] : (mode === 'treasury' ? ['#ca8a04', '#854d0e'] : ['#d97706', '#92400e']),
+        grad: mode === 'chaos' ? ['#9a3412', '#581c87'] : (mode === 'bazhen' ? ['#7e22ce', '#3b0764'] : (mode === 'treasury' ? ['#ca8a04', '#854d0e'] : ['#d97706', '#92400e'])),
         border: '#fef08a',
         fontSize: 12,
         disabled: locked || left <= 0,

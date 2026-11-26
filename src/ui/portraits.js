@@ -312,28 +312,80 @@
     const o = opts || {};
     const b = App.Config.BEASTS[bid];
     const r = o.radius != null ? o.radius : 12;
+    const isZhulong = bid === 'zhulong';
+    const t = isZhulong && size >= 56 ? ((Date.now() % 1000000) / 1000) : 0;
+
+    // 创世烛龙专属外溢赤金日冕神框背光
+    if (isZhulong && size >= 56 && !o.noAnim) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 3.6);
+      ctx.save();
+      App.UI.roundRect(ctx, x - 2.5, y - 2.5, size + 5, size + 5, r + 2.5);
+      ctx.strokeStyle = `rgba(251, 191, 36, ${0.38 + pulse * 0.38})`;
+      ctx.lineWidth = 2.8;
+      ctx.stroke();
+      ctx.restore();
+    }
 
     ctx.save();
     App.UI.roundRect(ctx, x, y, size, size, r);
     ctx.clip();
 
     const img = App.Assets.get('beast_' + bid);
+    const ownedBeast = (!o.raw && App.State && App.State.get && App.State.get().ownedBeasts)
+      ? App.State.get().ownedBeasts[bid]
+      : null;
+    const ascPath = o.ascend !== undefined ? o.ascend : ((ownedBeast && ownedBeast.ascend) || '');
+    const ascBorder = ascPath === 'xian' ? '#38bdf8' : (ascPath === 'mo' ? '#e879f9' : null);
+
     if (img) {
       ctx.drawImage(img, x, y, size, size);
     } else if (b) {
-      drawVectorBeast(ctx, b, x, y, size);
+      drawVectorBeast(ctx, b, x, y, size, ascPath);
     }
     ctx.restore();
 
     ctx.save();
     App.UI.roundRect(ctx, x, y, size, size, r);
-    ctx.strokeStyle = o.border || (b ? b.glow : '#facc15');
-    ctx.lineWidth = o.lineWidth || 2;
+    ctx.strokeStyle = o.border || ascBorder || (b ? b.glow : '#facc15');
+    ctx.lineWidth = o.lineWidth || (ascBorder ? 2.4 : (isZhulong ? 2.4 : 2));
     ctx.stroke();
+
+    // 右上角神/魔圣兽印记角标
+    if ((ascPath === 'xian' || ascPath === 'mo') && size >= 34) {
+      const isXian = ascPath === 'xian';
+      const br = Math.max(7.5, Math.min(12, size * 0.135));
+      const bx = x + size - br - 2.5;
+      const by = y + br + 2.5;
+      ctx.beginPath();
+      ctx.arc(bx, by, br, 0, Math.PI * 2);
+      ctx.fillStyle = isXian ? 'rgba(8, 51, 68, 0.94)' : 'rgba(74, 4, 78, 0.94)';
+      ctx.fill();
+      ctx.strokeStyle = isXian ? '#67e8f9' : '#f472b6';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      ctx.fillStyle = isXian ? '#ecfeff' : '#fdf4ff';
+      ctx.font = `bold ${Math.max(9, Math.round(br * 1.12))}px "PingFang SC", serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(isXian ? '神' : '魔', bx, by + 0.5);
+    }
+
+    // 创世烛龙立绘右上角“昼”日冕金芒星徽
+    if (isZhulong && !ascPath && size >= 56 && !o.noAnim) {
+      const tw = 0.55 + 0.45 * Math.abs(Math.sin(t * 4.0));
+      const sx = x + size - 8, sy = y + 8, sr = Math.max(4, size * 0.055) * tw;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = '#fef08a';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(sx - sr, sy); ctx.lineTo(sx + sr, sy);
+      ctx.moveTo(sx, sy - sr); ctx.lineTo(sx, sy + sr);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
-  function drawVectorBeast(ctx, b, x, y, s) {
+  function drawVectorBeast(ctx, b, x, y, s, ascPath) {
     const cx = x + s / 2;
     const cy = y + s / 2;
 
@@ -433,6 +485,30 @@
       ctx.beginPath();
       ctx.arc(0, 0, s * 0.09, 0, Math.PI * 2);
       ctx.fill();
+    } else if (b.id === 'zhulong') {
+      // 创世烛龙：太古赤金日轮 + 霸皇四重龙角 + 额间睁目为昼竖瞳
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = Math.max(2, s * 0.045);
+      ctx.beginPath();
+      ctx.arc(0, -s * 0.02, s * 0.31, 0, Math.PI * 2);
+      ctx.stroke();
+      // 皇冠双巨角与翼廓
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.10, -s * 0.10); ctx.lineTo(-s * 0.28, -s * 0.36); ctx.lineTo(-s * 0.04, -s * 0.18);
+      ctx.moveTo(s * 0.10, -s * 0.10);  ctx.lineTo(s * 0.28, -s * 0.36);  ctx.lineTo(s * 0.04, -s * 0.18);
+      ctx.fill();
+      // 额心竖立天目（睁目为昼）
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(0, -s * 0.11, s * 0.038, s * 0.095, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // 炽金双龙目
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.arc(-s * 0.10, s * 0.02, s * 0.042, 0, Math.PI * 2);
+      ctx.arc(s * 0.10, s * 0.02, s * 0.042, 0, Math.PI * 2);
+      ctx.fill();
     } else {
       // 太古四凶与上古神兽古篆图腾光轮兜底
       ctx.strokeStyle = b.glow || '#fde047';
@@ -461,7 +537,8 @@
     ctx.font = `bold ${Math.max(10, Math.round(s * 0.20))}px "PingFang SC", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(b.shortName, cx, y + s * 0.87);
+    const shortLbl = ascPath === 'xian' ? ('神.' + b.shortName) : (ascPath === 'mo' ? ('魔.' + b.shortName) : b.shortName);
+    ctx.fillText(shortLbl, cx, y + s * 0.87, s - 4);
   }
 
   App.Portraits = {

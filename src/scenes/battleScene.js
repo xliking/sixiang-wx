@@ -1,6 +1,7 @@
 (function (root) {
   const App = (root.SiXiang = root.SiXiang || {});
   let battle = null;
+  let showStatsModal = false;
 
   const BACK = { arena: 'arena', beast: 'beastDungeon', demon: 'demon', tower: 'tower', city: 'map' };
   const backOf = (b) => b.backScene || BACK[b.mode] || 'challenge';
@@ -101,6 +102,7 @@
   }
 
   function enter(params) {
+    showStatsModal = false;
     if (App.Scenes.settings && App.Scenes.settings.closeBattleModal) {
       App.Scenes.settings.closeBattleModal();
     }
@@ -111,6 +113,7 @@
   }
 
   function leave() {
+    showStatsModal = false;
     if (battle) {
       battle.retreatConfirmOpen = false;
       battle.userPaused = false;
@@ -176,7 +179,7 @@
     }
 
     battle.dyingUnits.forEach((d) => {
-      if (d.x < viewL - 160 || d.x > viewR + 160) return;
+      if (d.x < viewL - 230 || d.x > viewR + 230) return;
       App.Sprites.drawDyingUnit(ctx, d);
     });
 
@@ -192,7 +195,8 @@
       }
     });
     battle.units.forEach((u) => {
-      if (!u.alive || u.x < viewL - 190 || u.x > viewR + 190) return;
+      const cullMargin = u.kind === 'beast' ? 260 : 190;
+      if (!u.alive || u.x < viewL - cullMargin || u.x > viewR + cullMargin) return;
       // 主营为等轴大建筑，按其底面中心深度 (y-56) 参与前后遮挡排序，确保辕门外将士永远显示在主营前方
       const sortY = (u.isMainBase || u.isBase) ? (u.y - 56) : u.y;
       renderList.push({ y: sortY, type: u.kind, obj: u });
@@ -276,7 +280,8 @@
 
     // 2. 顶部一体化檀木资源栏（木材胶囊 + 粮草胶囊 + 鎏金圆章【▶ 军需+120】补给胶囊；世界/联盟 BOSS 无小兵模式下隐藏）
     const noTroops = !!battle.noTroops;
-    const showSupplyBtn = !noTroops && !battle.adSupplyUsed && battle.status === 'fighting';
+    const adsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
+    const showSupplyBtn = adsOn && !noTroops && !battle.adSupplyUsed && battle.status === 'fighting';
     const leftBarRight = noTroops ? 10 : (10 + (showSupplyBtn ? 338 : 228));
     if (!noTroops) {
       App.UI.drawWoodHeader(ctx, 10, 6, showSupplyBtn ? 338 : 228, 40);
@@ -346,7 +351,7 @@
     ctx.restore();
 
     if (hasRoundBadge) {
-      const displayRound = battle.special && (battle.special.type === 'pass' || battle.special.type === 'xian' || battle.special.type === 'mo')
+      const displayRound = battle.special && (battle.special.type === 'pass' || battle.special.type === 'xian' || battle.special.type === 'mo' || battle.special.type === 'beast_xian' || battle.special.type === 'beast_mo' || battle.special.type === 'bazhen')
         ? Math.min(battle.totalRounds, (battle.passCleared || 0) + 1)
         : battle.round;
       drawRoundProgressCircle(ctx, headerX + headerW - 21, 25, 14.5, displayRound, battle.totalRounds);
@@ -374,11 +379,11 @@
     }
     App.UI.drawButton(ctx, W - 216, 8, 64, 36, `${battle.speedMult}x 加速`, {
       r: 8,
-      grad: battle.speedMult > 1 ? ['#b45309', '#78350f'] : undefined,
+      grad: battle.speedMult >= 3 ? ['#7e22ce', '#4c1d95'] : (battle.speedMult === 2 ? ['#b45309', '#78350f'] : undefined),
       bg: battle.speedMult > 1 ? undefined : '#78350f',
-      border: '#fde047',
+      border: battle.speedMult >= 3 ? '#f5d0fe' : '#fde047',
       fontSize: 11.5,
-    }, () => { battle.speedMult = battle.speedMult === 1 ? 2 : 1; });
+    }, () => { battle.speedMult = battle.speedMult === 1 ? 2 : (battle.speedMult === 2 ? 3 : 1); });
 
     const manualPaused = !!battle.userPaused;
     App.UI.drawButton(ctx, W - 146, 8, 64, 36, manualPaused ? '继续' : '暂停', {
@@ -425,9 +430,15 @@
         if (sp.type === 'tomb') txt = `皇陵劫掠倒计时 ${t} 秒  ·  已夺秘宝 ${App.BattleEngine.specialScore(battle)} / ${sp.lootTotal}`;
         else if (sp.type === 'treasury') txt = `郿坞夺金倒计时 ${t} 秒  ·  已破金窖 ${App.BattleEngine.specialScore(battle)} / ${sp.lootTotal}`;
         else if (sp.type === 'defend') txt = `死守帅帐 · 剩余 ${t} 秒  ·  第 ${battle.round} / ${battle.totalRounds} 波蛮兵`;
-        else if (sp.type === 'pass' || sp.type === 'xian' || sp.type === 'mo') {
-          const pTitle = sp.type === 'xian' ? '九天仙台渡劫' : (sp.type === 'mo' ? '幽冥魔渊试炼' : '千里走单骑');
+        else if (sp.type === 'pass' || sp.type === 'xian' || sp.type === 'mo' || sp.type === 'beast_xian' || sp.type === 'beast_mo') {
+          const pTitle = sp.type === 'xian' ? '九天仙台渡劫'
+            : (sp.type === 'mo' ? '幽冥魔渊试炼'
+              : (sp.type === 'beast_xian' ? '万兽封神坛试炼'
+                : (sp.type === 'beast_mo' ? '洪荒魔兽渊试炼' : '千里走单骑')));
           txt = `${pTitle} · 已破 ${battle.passCleared || 0} / ${battle.totalRounds} 重（过重回血 ${Math.round((sp.cfg.healPct || 0.25) * 100)}%）`;
+        }
+        else if (sp.type === 'bazhen') {
+          txt = `武侯八阵图 · 第 ${battle.round}/${battle.totalRounds} 门 · 已得奇策 ${(battle.chosenStratagems || []).length} 道（破门回血 ${Math.round((sp.cfg.healPct || 0.25) * 100)}%）`;
         }
         else if (sp.type === 'escort') txt = `护送木牛流马 · 粮车耐久 ${Math.round((battle.cartHpPct || 1) * 100)}%`;
         else if (sp.type === 'chaos') txt = App.State.get().activeBeastId === (battle.level.special.boss || {}).counter ? '✦ 克制神兽在阵 · 太古凶兽护盾已破除！' : '⚠ 未上阵克制神兽 · 凶兽护盾减免九成伤害';
@@ -493,7 +504,7 @@
       });
     }
 
-    // 3. 三军指令按钮（神兽灵气积满自动释放神威，不在界面展示神兽技能进度条/按钮）
+    // 3. 三军指令按钮 + 自动大招开关 + 随军圣兽战况与手动/自动御兽盘
     const orderY = 380;
     [
       { id: 'hold', label: '武将待命' },
@@ -501,11 +512,11 @@
       { id: 'retreat', label: '武将撤退' },
     ].forEach((o, i) => {
       const act = battle.order === o.id;
-      App.UI.drawButton(ctx, 14 + i * 86, orderY, 80, 30, o.label, {
+      App.UI.drawButton(ctx, 14 + i * 84, orderY, 78, 30, o.label, {
         r: 7,
         grad: act ? ['#d97706', '#92400e'] : ['#44403c', '#292524'],
         border: act ? '#fef08a' : '#78716c',
-        fontSize: 11,
+        fontSize: 10.5,
       }, () => {
         if (isPaused) {
           App.UI.showToast('战局已暂停，请先点击【继续】恢复作战', '#fde047');
@@ -515,6 +526,56 @@
         App.UI.showToast(`三军听令：${o.label}！`, '#fef08a');
       });
     });
+
+    const autoUltOn = !!battle.autoSkill;
+    App.UI.drawButton(ctx, 268, orderY, 92, 30, autoUltOn ? '⚡自动大招:开' : '⚡自动大招:关', {
+      r: 7,
+      grad: autoUltOn ? ['#15803d', '#14532d'] : ['#44403c', '#292524'],
+      border: autoUltOn ? '#86efac' : '#94a3b8',
+      fontSize: 10,
+    }, () => {
+      const next = App.BattleEngine.toggleAutoSkill ? App.BattleEngine.toggleAutoSkill(battle) : (battle.autoSkill = !battle.autoSkill);
+      App.UI.showToast(next ? '已开启【名将自动大招】（满怒自动择机施放）' : '已切换【名将手动大招】', next ? '#4ade80' : '#fde047');
+    });
+
+    if (battle.playerBeastUnit) {
+      const bu = battle.playerBeastUnit;
+      const bCfg = bu.beastCfg || App.Config.BEASTS[bu.id] || {};
+      const bx = 368, by = 376, bw = 236, bh = 36;
+      const bReady = bu.alive && (bu.rage || 0) >= 100 && battle.status === 'fighting';
+      App.UI.drawPanel(ctx, bx, by, bw, bh, {
+        r: 9,
+        bg: !bu.alive ? 'rgba(30, 27, 26, 0.85)' : (bReady ? 'rgba(120, 53, 15, 0.94)' : 'rgba(18, 28, 42, 0.90)'),
+        border: !bu.alive ? '#64748b' : (bReady ? '#fde047' : (bCfg.glow || '#38bdf8')),
+        lineWidth: bReady ? 2.2 : 1.5,
+      });
+      ctx.save();
+      if (!bu.alive) ctx.globalAlpha = 0.45;
+      App.Portraits.drawBeastPortrait(ctx, bu.id, bx + 5, by + 4, 28, { radius: 6, border: bCfg.glow || '#38bdf8', lineWidth: 1.2 });
+      ctx.restore();
+
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.fillStyle = bReady ? '#fef08a' : (bCfg.glow || '#bae6fd');
+      ctx.font = 'bold 10.5px "PingFang SC", sans-serif';
+      ctx.fillText(`${bu.name}`, bx + 38, by + 15, 86);
+
+      ctx.textAlign = 'right';
+      ctx.fillStyle = !bu.alive ? '#fca5a5' : (bReady ? '#fde047' : '#e2e8f0');
+      ctx.font = 'bold 9.5px "PingFang SC", sans-serif';
+      const bTag = !bu.alive
+        ? '已退场'
+        : (bReady ? '✦满怒点此降临!' : `${battle.autoBeast !== false ? '自动' : '手动'}·怒${Math.floor(bu.rage || 0)}%`);
+      ctx.fillText(bTag, bx + bw - 8, by + 15);
+      ctx.restore();
+
+      App.UI.drawBar(ctx, bx + 38, by + 20, 92, 5, bu.alive ? (bu.hp / Math.max(1, bu.maxHp)) : 0, '#22c55e', 'rgba(0,0,0,0.65)');
+      App.UI.drawBar(ctx, bx + 136, by + 20, bw - 144, 5, bu.alive ? Math.min(1, (bu.rage || 0) / 100) : 0, bReady ? '#fef08a' : '#38bdf8', 'rgba(0,0,0,0.65)');
+
+      if (battle.status === 'fighting' && bu.alive && App.BattleEngine.triggerPlayerBeastSkill) {
+        App.UI.addHit(bx, by, bw, bh, () => App.BattleEngine.triggerPlayerBeastSkill(battle));
+      }
+    }
 
     // ★ 3B. 右下小地图正上方：专属【镇军法宝】对战实时灵盘（展示出战法宝真身图标、强化等级与神威蓄力条！）
     if (battle.playerArtifact) {
@@ -867,8 +928,8 @@
         ctx.strokeRect(mx - 4.5, my - 4.5, 9, 9);
         return;
       }
-      ctx.fillStyle = u.side === 'player' ? (u.kind === 'beast' ? '#38bdf8' : '#2563eb') : '#dc2626';
-      ctx.beginPath(); ctx.arc(mx, my, u.kind === 'soldier' ? 2.5 : 4.2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = u.side === 'player' ? (u.kind === 'beast' ? '#38bdf8' : '#2563eb') : (u.isWildBeast ? '#f59e0b' : '#dc2626');
+      ctx.beginPath(); ctx.arc(mx, my, u.isWildBeast ? 5.6 : (u.kind === 'soldier' ? 2.5 : 4.2), 0, Math.PI * 2); ctx.fill();
     });
     const vx = mmX + (battle.cameraX / battle.worldW) * mmW;
     const vw = (W / battle.worldW) * mmW;
@@ -964,11 +1025,13 @@
       const rx = W + 20 - slideIn * 240;
       if (battle.leadEnemyBeastId) {
         const eb = App.Config.BEASTS[battle.leadEnemyBeastId];
-        App.Portraits.drawBeastPortrait(ctx, eb.id, rx, 142, 138, { radius: 14, border: eb.glow, lineWidth: 3 });
-        ctx.fillStyle = eb.glow;
+        const ebAsc = battle.mode === 'beast_xian' ? 'xian' : (battle.mode === 'beast_mo' ? 'mo' : '');
+        const ebPrefix = ebAsc === 'xian' ? '护道神兽 · 神.' : (ebAsc === 'mo' ? '灭世凶兽 · 魔.' : '镇守神兽 · ');
+        App.Portraits.drawBeastPortrait(ctx, eb.id, rx, 142, 138, { radius: 14, border: ebAsc === 'xian' ? '#67e8f9' : (ebAsc === 'mo' ? '#f472b6' : eb.glow), lineWidth: 3, raw: true, ascend: ebAsc });
+        ctx.fillStyle = ebAsc === 'xian' ? '#67e8f9' : (ebAsc === 'mo' ? '#f472b6' : eb.glow);
         ctx.font = 'bold 20px "PingFang SC", serif';
         ctx.textAlign = 'right';
-        ctx.fillText(`镇守神兽 · ${eb.name}`, rx - 14, 196);
+        ctx.fillText(`${ebPrefix}${eb.name}`, rx - 14, 196);
       } else if (battle.leadEnemyGenId) {
         const eg = App.Config.GENERALS[battle.leadEnemyGenId];
         App.Portraits.drawGeneralPortrait(ctx, eg.id, rx, 142, 138, { radius: 14, border: '#f87171', lineWidth: 3 });
@@ -990,16 +1053,202 @@
 
     const settingsOpen = !!(App.Scenes.settings && App.Scenes.settings.isBattleModalOpen && App.Scenes.settings.isBattleModalOpen());
     const adOpen = !!(App.Platform.adOverlay && App.Platform.adOverlay.active);
-    if (battle.status === 'fighting' && battle.userPaused && !battle.retreatConfirmOpen && !settingsOpen && !adOpen) {
+    const stratOpen = battle.status === 'fighting' && !!(battle.pendingStratagems && battle.pendingStratagems.length);
+    if (stratOpen) {
+      drawStratagemModal(ctx);
+    } else if (battle.status === 'fighting' && battle.userPaused && !battle.retreatConfirmOpen && !settingsOpen && !adOpen) {
       drawPauseOverlay(ctx);
     }
     if (battle.status === 'fighting' && battle.retreatConfirmOpen) {
       drawRetreatConfirmModal(ctx);
     }
-    if (battle.status !== 'fighting') drawResultModal(ctx, st, time || 0);
+    if (battle.status !== 'fighting') {
+      drawResultModal(ctx, st, time || 0);
+      if (showStatsModal) drawBattleStatsModal(ctx, W, H);
+    }
     if (App.Scenes.settings && App.Scenes.settings.drawBattleModal) {
       App.Scenes.settings.drawBattleModal(ctx);
     }
+  }
+
+  function drawStratagemModal(ctx) {
+    const W = App.Platform.LOGICAL_W;
+    const H = App.Platform.LOGICAL_H;
+    const list = battle.pendingStratagems || [];
+    if (!list.length) return;
+
+    App.UI.addHit(0, 0, W, H, () => {}, { silent: true });
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 5, 16, 0.80)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+
+    const mw = 744, mh = 342;
+    const mx = Math.round((W - mw) / 2), my = Math.round((H - mh) / 2) + 8;
+    App.UI.drawPanel(ctx, mx, my, mw, mh, { r: 16, bg: '#1a0e29', border: '#facc15', lineWidth: 2.5 });
+    App.UI.drawPanel(ctx, mx + 7, my + 7, mw - 14, mh - 14, { r: 12, bg: 'rgba(36, 18, 58, 0.78)', border: 'rgba(192, 132, 252, 0.35)', lineWidth: 1.2 });
+
+    App.UI.drawPanel(ctx, W / 2 - 216, my - 20, 432, 40, { r: 20, bg: '#581c87', border: '#fef08a', lineWidth: 2.2 });
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 17px "PingFang SC", serif';
+    ctx.fillText(`✦ 武侯八阵 · 奇策锦囊三选一（第 ${battle.round}/${battle.totalRounds} 门）✦`, W / 2, my);
+
+    const chosen = battle.chosenStratagems || [];
+    ctx.fillStyle = '#e9d5ff';
+    ctx.font = '11.5px "PingFang SC", sans-serif';
+    ctx.fillText(
+      chosen.length
+        ? `本局已加持奇策：${chosen.map((c) => '【' + c.name + '】').join(' ')}`
+        : '破门之喜！请择一道武侯奇策赐福全军，效果叠加持续至本场八阵通关！',
+      W / 2, my + 36, mw - 48
+    );
+    ctx.restore();
+
+    const qThemes = {
+      red: { label: '绝世奇谋', bg: '#3b0d1e', border: '#fb7185', col: '#fda4af', btn: ['#e11d48', '#881337'] },
+      gold: { label: '仙品锦囊', bg: '#361e09', border: '#facc15', col: '#fde047', btn: ['#d97706', '#92400e'] },
+      purple: { label: '玄门兵法', bg: '#26133d', border: '#c084fc', col: '#e9d5ff', btn: ['#7e22ce', '#4c1d95'] },
+    };
+
+    const cw = 224, ch = 262, gap = 16;
+    const startX = mx + Math.round((mw - (cw * list.length + gap * (list.length - 1))) / 2);
+    const cy = my + 58;
+
+    list.forEach((s, idx) => {
+      const cx = startX + idx * (cw + gap);
+      const qt = qThemes[s.quality] || qThemes.gold;
+      const borderCol = s.color || qt.border;
+      const tagLabel = s.tag || qt.label;
+      App.UI.drawPanel(ctx, cx, cy, cw, ch, {
+        r: 12, bg: qt.bg, border: borderCol, lineWidth: 2,
+      });
+
+      ctx.save();
+      App.UI.roundRect(ctx, cx + cw / 2 - 44, cy + 12, 88, 20, 10);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.fill();
+      ctx.strokeStyle = borderCol;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = s.color || qt.col;
+      ctx.font = 'bold 10.5px "PingFang SC", sans-serif';
+      ctx.fillText(tagLabel, cx + cw / 2, cy + 22);
+
+      ctx.fillStyle = '#fef08a';
+      ctx.font = 'bold 17px "PingFang SC", serif';
+      ctx.fillText(`【${s.name}】`, cx + cw / 2, cy + 62, cw - 20);
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = '12px "PingFang SC", sans-serif';
+      ctx.textBaseline = 'alphabetic';
+      App.UI.drawWrappedText(ctx, s.desc || '', cx + cw / 2, cy + 104, cw - 28, 19, 'center');
+      ctx.restore();
+
+      App.UI.drawButton(ctx, cx + 22, cy + ch - 54, cw - 44, 40, '择此奇策 ▶', {
+        r: 9, grad: qt.btn, border: '#fef08a', fontSize: 13.5,
+      }, () => {
+        if (App.BattleEngine.pickBazhenStratagem) {
+          App.BattleEngine.pickBazhenStratagem(battle, s.id);
+        }
+      });
+    });
+  }
+
+  function drawBattleStatsModal(ctx, W, H) {
+    App.UI.addHit(0, 0, W, H, () => { showStatsModal = false; });
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 5, 3, 0.82)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+
+    const mw = 680, mh = 420;
+    const mx = Math.round((W - mw) / 2), my = Math.round((H - mh) / 2) + 6;
+    App.UI.drawPanel(ctx, mx, my, mw, mh, { r: 15, bg: '#221108', border: '#facc15', lineWidth: 2.4 });
+    App.UI.addHit(mx, my, mw, mh, () => {});
+    App.UI.drawWoodHeader(ctx, mx + 12, my + 10, mw - 24, 40);
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 16.5px "PingFang SC", serif';
+    ctx.fillText('⚔ 本局沙场战功统计（输出 / 承伤 / 治疗）⚔', W / 2, my + 30);
+    ctx.restore();
+
+    App.UI.drawButton(ctx, mx + mw - 86, my + 15, 66, 29, '✕ 关闭', {
+      r: 7, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 11.5,
+    }, () => { showStatsModal = false; });
+
+    const list = (App.BattleEngine.getBattleStatsReport ? App.BattleEngine.getBattleStatsReport(battle) : []).slice(0, 6);
+    if (!list.length) {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fde68a';
+      ctx.font = '13px "PingFang SC", sans-serif';
+      ctx.fillText('本局暂无伤害与治疗记录', W / 2, my + mh / 2);
+      ctx.restore();
+      return;
+    }
+
+    const maxDmg = Math.max(1, ...list.map((r) => r.dmgDealt || 0));
+    const maxTank = Math.max(1, ...list.map((r) => r.dmgTaken || 0));
+    const maxHeal = Math.max(1, ...list.map((r) => r.healDone || 0));
+
+    list.forEach((r, idx) => {
+      const ry = my + 60 + idx * 57;
+      const rx = mx + 18, rw = mw - 36, rh = 51;
+      App.UI.drawPanel(ctx, rx, ry, rw, rh, {
+        r: 8,
+        bg: r.isMvp ? 'rgba(120, 53, 15, 0.55)' : 'rgba(15, 8, 4, 0.72)',
+        border: r.isMvp ? '#fde047' : '#6b4423',
+        lineWidth: r.isMvp ? 2 : 1.2,
+      });
+
+      if (r.kind === 'beast') {
+        App.Portraits.drawBeastPortrait(ctx, r.id, rx + 8, ry + 5.5, 40, { radius: 6, lineWidth: 1.4 });
+      } else {
+        App.Portraits.drawGeneralPortrait(ctx, r.id, rx + 8, ry + 5.5, 40, { radius: 6, lineWidth: 1.4 });
+      }
+
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.fillStyle = r.isMvp ? '#fde047' : '#fef3c7';
+      ctx.font = 'bold 12px "PingFang SC", sans-serif';
+      ctx.fillText(r.name || r.id, rx + 56, ry + 21, 96);
+      if (r.isMvp) {
+        ctx.fillStyle = '#dc2626';
+        App.UI.roundRect(ctx, rx + 56, ry + 27, 54, 16, 4);
+        ctx.fill();
+        ctx.strokeStyle = '#fde047';
+        ctx.lineWidth = 0.9;
+        ctx.stroke();
+        ctx.fillStyle = '#fef08a';
+        ctx.font = 'bold 9.5px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('★ MVP', rx + 83, ry + 38.5);
+      } else {
+        ctx.fillStyle = r.alive === false ? '#fca5a5' : '#86efac';
+        ctx.font = '10px "PingFang SC", sans-serif';
+        ctx.fillText(r.alive === false ? '阵亡' : '存活', rx + 56, ry + 40);
+      }
+
+      const drawMetric = (label, val, maxV, col, bx0) => {
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#fed7aa';
+        ctx.font = '10px "PingFang SC", sans-serif';
+        ctx.fillText(`${label} ${val}`, bx0, ry + 20, 148);
+        App.UI.drawBar(ctx, bx0, ry + 28, 144, 9, Math.min(1, val / maxV), col, 'rgba(0,0,0,0.65)');
+      };
+      drawMetric('输出', r.dmgDealt || 0, maxDmg, '#f97316', rx + 162);
+      drawMetric('承伤', r.dmgTaken || 0, maxTank, '#38bdf8', rx + 322);
+      drawMetric('治疗', r.healDone || 0, maxHeal, '#4ade80', rx + 482);
+      ctx.restore();
+    });
   }
 
   // ★ 沙场驻军暂停浮窗（半透微暗不遮视野，支持左右滑屏观察敌阵，一键继续作战或鸣金撤退）
@@ -1446,7 +1695,9 @@
 
         const pityPct = Math.round((st.recruitPity[gid] || 0) * 100);
         const stepPct = Math.max(1, Math.round((((App.Config.PARAMS && App.Config.PARAMS.recruitPityStep) != null ? App.Config.PARAMS.recruitPityStep : 0.05) * 100)));
-        const dupSoul = (App.Config.PARAMS && App.Config.PARAMS.duplicateGeneralSoul) || 45;
+        const dupSoul = App.Config.getDuplicateSoul
+          ? App.Config.getDuplicateSoul(gid)
+          : ((App.Config.PARAMS && App.Config.PARAMS.duplicateGeneralSoul) || 45);
         ctx.fillStyle = tier.color;
         ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
         ctx.fillText(
@@ -1455,8 +1706,9 @@
         );
         ctx.restore();
 
+        const resAdsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
         if (battle.recruitState === 'pending') {
-          App.UI.drawButton(ctx, boxX + 116, boxY + 64, 192, 50, `礼贤招降 (${chance}%)`, {
+          App.UI.drawButton(ctx, boxX + 116, boxY + 64, resAdsOn ? 192 : 392, 50, `礼贤招降 (${chance}%)`, {
             r: 9, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 13.5,
             subText: `失败自动 +${stepPct}% 保底率`, loading: settling, disabled: settling,
           }, () => {
@@ -1465,16 +1717,18 @@
             });
           });
 
-          App.UI.drawAdButton(ctx, boxX + 318, boxY + 64, 190, 50, `三顾茅庐 (${dblChance}%)`, {
-            r: 9, fontSize: 13,
-            subText: '双倍高几率直招', loading: settling, disabled: settling,
-          }, () => {
-            App.Platform.showRewardedAd('recruit_retry', `施展【三顾茅庐】，以 ${dblChance}% 双倍高几率招降 ${g.name}！`, () => {
-              App.BattleEngine.postVictoryRecruit(battle, true).then((res) => {
-                if (res.ok) App.UI.showToast(res.success ? `三顾茅庐成功！【${g.name}】入营！` : `傲骨铮铮，赏识度再 +${stepPct}%！`, res.success ? '#4ade80' : '#fde047');
+          if (resAdsOn) {
+            App.UI.drawAdButton(ctx, boxX + 318, boxY + 64, 190, 50, `三顾茅庐 (${dblChance}%)`, {
+              r: 9, fontSize: 13,
+              subText: '双倍高几率直招', loading: settling, disabled: settling,
+            }, () => {
+              App.Platform.showRewardedAd('recruit_retry', `施展【三顾茅庐】，以 ${dblChance}% 双倍高几率招降 ${g.name}！`, () => {
+                App.BattleEngine.postVictoryRecruit(battle, true).then((res) => {
+                  if (res.ok) App.UI.showToast(res.success ? `三顾茅庐成功！【${g.name}】入营！` : `傲骨铮铮，赏识度再 +${stepPct}%！`, res.success ? '#4ade80' : '#fde047');
+                });
               });
             });
-          });
+          }
         } else if (battle.recruitState === 'success') {
           ctx.save();
           ctx.fillStyle = 'rgba(22, 163, 74, 0.22)';
@@ -1489,7 +1743,7 @@
             boxX + 312, boxY + 95
           );
           ctx.restore();
-        } else if (battle.recruitState === 'exhausted') {
+        } else if (battle.recruitState === 'exhausted' || !resAdsOn) {
           ctx.save();
           ctx.fillStyle = 'rgba(120, 53, 15, 0.35)';
           App.UI.roundRect(ctx, boxX + 116, boxY + 68, 392, 44, 9);
@@ -1565,6 +1819,7 @@
             });
           });
 
+          const beastAdsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
           if (st.goldRopes > 0) {
             App.UI.drawButton(ctx, boxX + 320, boxY + 64, 188, 50, `黄金缚兽索 (${r2}%)`, {
               r: 9, grad: ['#d97706', '#b45309'], border: '#fef08a', fontSize: 12.5,
@@ -1574,7 +1829,7 @@
                 if (res.ok) App.UI.showToast(res.success ? `金索锁魂！收服【${bCfg.name}】！` : `圣兽震碎金索遁去！`, res.success ? '#4ade80' : '#f87171');
               });
             });
-          } else {
+          } else if (beastAdsOn) {
             App.UI.drawAdButton(ctx, boxX + 320, boxY + 64, 188, 50, `免费领黄金索`, {
               r: 9, fontSize: 12.5,
               subText: `成功率提升至 ${r2}%`, loading: settling, disabled: settling,
@@ -1582,6 +1837,11 @@
               App.Platform.showRewardedAd('golden_rope', '免费领取 1 根【黄金缚兽索】（双倍抓捕率）！', () => {
                 App.State.claimAd('golden_rope');
               });
+            });
+          } else {
+            App.UI.drawButton(ctx, boxX + 320, boxY + 64, 188, 50, `黄金缚兽索 (0根)`, {
+              r: 9, grad: ['#475569', '#334155'], border: '#64748b', fontSize: 12.5,
+              subText: '可通过宝箱/商城获取', disabled: true,
             });
           }
         }
@@ -1592,12 +1852,17 @@
       const isCity = battle.mode === 'city' && !!battle.level;
       const isCityNext = isCity && battle.level.order < App.Config.TOTAL_STAGES;
       const curCityCost = isCity ? App.State.getStaminaCost(battle.level.staminaCost) : 5;
+      const postAdsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
       const adStaGain = App.State.getAdRewardAmount ? App.State.getAdRewardAmount('stamina', 'stamina') : 20;
 
       const onReplayCity = () => {
         if (!isCity) return;
         const curLv = App.Config.buildStage ? App.Config.buildStage(battle.level.order) : battle.level;
         if (st.stamina < App.State.getStaminaCost(curLv.staminaCost)) {
+          if (!postAdsOn) {
+            App.UI.showToast('粮草体力不足，请等待恢复或前往军备仓库使用行军粮草丹！', '#fbbf24');
+            return;
+          }
           App.Platform.showRewardedAd('stamina', `粮草不足！观看激励视频立即恢复 +${adStaGain} 粮草并再次征战本关！`, () => {
             App.State.claimAd('stamina').then((res) => { if (res && res.ok) App.Main.startBattle('city', curLv.order, { level: curLv }); });
           });
@@ -1607,13 +1872,26 @@
       };
 
       const onBackToMap = () => {
-        App.Main.goScene('map', isCity ? { selectOrder: battle.level.order } : undefined);
+        if (isCity) {
+          const curSt = App.State.get();
+          const nextOrder = Math.min(
+            App.Config.TOTAL_STAGES,
+            Math.max((curSt.maxClearedOrder || 0) + 1, (battle.level.order || 0) + 1)
+          );
+          App.Main.goScene('map', { selectOrder: nextOrder });
+          return;
+        }
+        App.Main.goScene('map');
       };
 
       const onNextClick = () => {
         if (isCityNext) {
           const nextLv = App.Config.buildStage(battle.level.order + 1);
           if (st.stamina < App.State.getStaminaCost(nextLv.staminaCost)) {
+            if (!postAdsOn) {
+              App.UI.showToast('粮草体力不足，请等待恢复或前往军备仓库使用行军粮草丹！', '#fbbf24');
+              return;
+            }
             App.Platform.showRewardedAd('stamina', `粮草不足！观看激励视频立即恢复 +${adStaGain} 粮草并进军下一关！`, () => {
               App.State.claimAd('stamina').then((res) => { if (res && res.ok) App.Main.startBattle('city', nextLv.order, { level: nextLv }); });
             });
@@ -1626,8 +1904,16 @@
       };
 
       if (isCity) {
-        if (!battle.doubleAdUsed) {
-          App.UI.drawAdButton(ctx, mx + 18, btnY, 126, 42, '双倍军饷', {
+        if (postAdsOn && !battle.doubleAdUsed) {
+          App.UI.drawButton(ctx, mx + 16, btnY, 96, 42, '返回地图', {
+            r: 9, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 12.5,
+          }, onBackToMap);
+
+          App.UI.drawButton(ctx, mx + 118, btnY, 96, 42, '战局统计', {
+            r: 9, grad: ['#5c2c16', '#3b1d0e'], border: '#d4a34b', fontSize: 12.5,
+          }, () => { showStatsModal = true; });
+
+          App.UI.drawAdButton(ctx, mx + 220, btnY, 108, 42, '双倍军饷', {
             r: 9, fontSize: 12,
             subText: `+${battle.goldReward}钱+${battle.soulReward}魂`,
             loading: settling, disabled: settling,
@@ -1637,29 +1923,25 @@
             });
           });
 
-          App.UI.drawButton(ctx, mx + 152, btnY, 106, 42, '返回地图', {
-            r: 9, grad: ['#475569', '#334155'], border: '#cbd5e1', fontSize: 12.5,
-          }, onBackToMap);
-
-          App.UI.drawButton(ctx, mx + 266, btnY, 132, 42, '再次征战', {
-            r: 9, grad: ['#78350f', '#451a03'], border: '#fde68a', fontSize: 13,
-            subText: `耗${curCityCost}粮重战本关`,
+          App.UI.drawButton(ctx, mx + 334, btnY, 104, 42, '再次征战', {
+            r: 9, grad: ['#78350f', '#451a03'], border: '#fde68a', fontSize: 12.5,
+            subText: `耗${curCityCost}粮重战`,
             loading: settling, disabled: settling,
           }, onReplayCity);
 
-          App.UI.drawButton(ctx, mx + 406, btnY, 140, 42, isCityNext ? '下一关 ▶' : '凯旋归营 ▶', {
-            r: 9, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 13.5,
-            subText: isCityNext ? `耗${curCityCost}粮草直战` : undefined,
+          App.UI.drawButton(ctx, mx + 444, btnY, 104, 42, isCityNext ? '下一关 ▶' : '凯旋归营 ▶', {
+            r: 9, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 12.5,
+            subText: isCityNext ? `耗${curCityCost}粮直战` : undefined,
             loading: settling, disabled: settling,
           }, onNextClick);
         } else {
           App.UI.drawButton(ctx, mx + 24, btnY, 124, 42, '返回地图', {
-            r: 9, grad: ['#475569', '#334155'], border: '#cbd5e1', fontSize: 13,
+            r: 9, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 13.5,
           }, onBackToMap);
 
-          App.UI.drawButton(ctx, mx + 158, btnY, 118, 42, '名将营', {
+          App.UI.drawButton(ctx, mx + 158, btnY, 118, 42, '战局统计', {
             r: 9, grad: ['#5c2c16', '#3b1d0e'], border: '#d4a34b', fontSize: 13,
-          }, () => App.Main.goScene('roster'));
+          }, () => { showStatsModal = true; });
 
           App.UI.drawButton(ctx, mx + 286, btnY, 124, 42, '再次征战', {
             r: 9, grad: ['#78350f', '#451a03'], border: '#fde68a', fontSize: 13,
@@ -1673,8 +1955,16 @@
             loading: settling, disabled: settling,
           }, onNextClick);
         }
-      } else if (!battle.doubleAdUsed && !isSpar) {
-        App.UI.drawAdButton(ctx, mx + 20, btnY, 136, 42, '双倍军饷', {
+      } else if (postAdsOn && !battle.doubleAdUsed && !isSpar) {
+        App.UI.drawButton(ctx, mx + 20, btnY, 114, 42, '返回地图', {
+          r: 9, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 13,
+        }, () => App.Main.goScene('map'));
+
+        App.UI.drawButton(ctx, mx + 142, btnY, 118, 42, '战局统计', {
+          r: 9, grad: ['#5c2c16', '#3b1d0e'], border: '#d4a34b', fontSize: 13,
+        }, () => { showStatsModal = true; });
+
+        App.UI.drawAdButton(ctx, mx + 268, btnY, 136, 42, '双倍军饷', {
           r: 9, fontSize: 12.5,
           subText: `+${battle.goldReward}钱+${battle.soulReward}魂`,
           loading: settling, disabled: settling,
@@ -1684,26 +1974,18 @@
           });
         });
 
-        App.UI.drawButton(ctx, mx + 164, btnY, 114, 42, '返回地图', {
-          r: 9, grad: ['#475569', '#334155'], border: '#cbd5e1', fontSize: 13,
-        }, () => App.Main.goScene('map'));
-
-        App.UI.drawButton(ctx, mx + 286, btnY, 118, 42, '名将与装备', {
-          r: 9, grad: ['#78350f', '#451a03'], border: '#d4a34b', fontSize: 13,
-        }, () => App.Main.goScene('roster'));
-
         App.UI.drawButton(ctx, mx + 412, btnY, 132, 42, '继续征战 ▶', {
           r: 9, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 14,
           loading: settling, disabled: settling,
         }, onNextClick);
       } else {
         App.UI.drawButton(ctx, mx + 34, btnY, 152, 42, '返回地图', {
-          r: 9, grad: ['#475569', '#334155'], border: '#cbd5e1', fontSize: 13.5,
+          r: 9, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 13.5,
         }, () => App.Main.goScene('map'));
 
-        App.UI.drawButton(ctx, mx + 198, btnY, 158, 42, '名将与装备', {
-          r: 9, grad: ['#78350f', '#451a03'], border: '#d4a34b', fontSize: 13.5,
-        }, () => App.Main.goScene('roster'));
+        App.UI.drawButton(ctx, mx + 198, btnY, 158, 42, '战局统计', {
+          r: 9, grad: ['#5c2c16', '#3b1d0e'], border: '#d4a34b', fontSize: 13.5,
+        }, () => { showStatsModal = true; });
 
         App.UI.drawButton(ctx, mx + 368, btnY, 162, 42, '继续征战 ▶', {
           r: 9, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 14,
@@ -1811,22 +2093,30 @@
         gcx += gcw + gcGap;
       });
 
-      // 3. 底部沉稳双主按钮（左：檀木古铜返回；右：朱红鎏金重整再战）
+      // 3. 底部三主按钮（左：朱红返回地图；中：战局统计；右：朱红鎏金重整再战）
       const btnY = gcy + gch + 16;
       const canRetryCity = battle.mode === 'city' && battle.level;
-      const backLabel = backScene === 'map' ? '◀ 返回征战地图' : '◀ 返回上级营帐';
+      const backLabel = backScene === 'map' ? '返回地图' : '返回营帐';
 
-      App.UI.drawButton(ctx, mx + 24, btnY, 226, 46, backLabel, {
-        r: 10, grad: ['#523620', '#2e1c0f'], border: '#c29042', fontSize: 14, color: '#f5e6cc',
+      App.UI.drawButton(ctx, mx + 24, btnY, 148, 46, backLabel, {
+        r: 10, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 14,
       }, () => App.Main.goScene(backScene, canRetryCity ? { selectOrder: battle.level.order } : undefined));
 
-      App.UI.drawButton(ctx, mx + mw - 24 - 248, btnY, 248, 46, canRetryCity ? '重整旗鼓 · 再战 ▶' : '前往整备再战 ▶', {
+      App.UI.drawButton(ctx, mx + 182, btnY, 120, 46, '战局统计', {
+        r: 10, grad: ['#5c2c16', '#3b1d0e'], border: '#d4a34b', fontSize: 13.5,
+      }, () => { showStatsModal = true; });
+
+      App.UI.drawButton(ctx, mx + 312, btnY, 200, 46, canRetryCity ? '重整旗鼓 · 再战 ▶' : '前往整备再战 ▶', {
         r: 10, grad: ['#dc2626', '#991b1b'], border: '#fde047', fontSize: 14.5,
         subText: canRetryCity ? `消耗 ${App.State.getStaminaCost(battle.level.staminaCost)} 粮草再次攻城` : undefined,
       }, () => {
         if (canRetryCity) {
           const needStam = App.State.getStaminaCost(battle.level.staminaCost);
           if (st.stamina < needStam) {
+            if (!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled())) {
+              App.UI.showToast('粮草体力不足，请等待恢复或前往军备仓库使用行军粮草丹！', '#fbbf24');
+              return;
+            }
             App.Platform.showRewardedAd('stamina', '粮草不足！观看激励视频立即恢复 +15 粮草并重整再战！', () => {
               App.State.claimAd('stamina').then((res) => {
                 if (res.ok) App.Main.startBattle('city', battle.level.order, { level: battle.level });
@@ -1846,13 +2136,15 @@
 
   function onDrag(dx) {
     if (!battle || battle.status !== 'fighting') return;
-    if (battle.retreatConfirmOpen) return;
+    if (battle.retreatConfirmOpen || (battle.pendingStratagems && battle.pendingStratagems.length)) return;
     if (App.Scenes.settings && App.Scenes.settings.isBattleModalOpen && App.Scenes.settings.isBattleModalOpen()) return;
     battle.autoCam = false;
     battle.cameraX = Math.max(0, Math.min(battle.worldW - App.Platform.LOGICAL_W, battle.cameraX - dx));
   }
 
   function onBattleClick(x, y) {
+    if (showStatsModal) return false;
+    if (battle && battle.pendingStratagems && battle.pendingStratagems.length) return false;
     if (App.Scenes.settings && App.Scenes.settings.isBattleModalOpen && App.Scenes.settings.isBattleModalOpen()) return false;
     if (!battle || battle.status !== 'fighting' || syncBattlePause(battle) || !battle.aimingUnit) return false;
     if (y >= 48 && y <= 376) {

@@ -57,6 +57,7 @@
   }
 
   let exchangeModalOpen = false;
+  let rewardModalState = null;
 
   function openExchangeModal() {
     exchangeModalOpen = true;
@@ -70,8 +71,38 @@
     }
   }
 
+  function openRewardModal(opts) {
+    const o = opts || {};
+    const list = Array.isArray(o.rewards) ? o.rewards.filter((r) => r && (Number(r.amount) || 0) > 0) : [];
+    if (!list.length) return;
+    rewardModalState = {
+      title: o.title || '开启宝箱 · 喜获重宝',
+      subtitle: o.subtitle || '',
+      chestId: o.chestId || null,
+      iconId: o.iconId || o.chestId || null,
+      count: o.count || 1,
+      rewards: list,
+      lvInfo: o.lvInfo || null,
+      openedAt: Date.now(),
+      page: 0,
+      selectedIdx: 0,
+    };
+    notifyUiDirty();
+  }
+
+  function closeRewardModal() {
+    if (rewardModalState) {
+      rewardModalState = null;
+      notifyUiDirty();
+    }
+  }
+
+  function isRewardModalOpen() {
+    return !!rewardModalState;
+  }
+
   function hasActiveOverlay() {
-    return toasts.length > 0 || activeLoads.length > 0 || exchangeModalOpen || !!(App.Compliance && App.Compliance.isOpen());
+    return toasts.length > 0 || activeLoads.length > 0 || exchangeModalOpen || !!rewardModalState || !!(App.Compliance && App.Compliance.isOpen());
   }
 
   function clearHits() { hitBoxes.length = 0; }
@@ -523,6 +554,7 @@
 
   // ★ 国风鎏金琥珀激励按钮（替代突兀刺眼的纯绿“广告”方块：左侧立体金章播放徽记 + 双层金丝檀木漆面）
   function drawAdButton(ctx, x, y, w, h, text, opts, onClick) {
+    if (App.Config && App.Config.isAdEnabled && !App.Config.isAdEnabled()) return;
     const o = opts || {};
     const btnKey = `${Math.round(x)}_${Math.round(y)}_${Math.round(w)}_${Math.round(h)}`;
     const isLoading = !!(o.loading || (activeLoads.length > 0 && lastClickedBtn && lastClickedBtn.key === btnKey));
@@ -867,15 +899,16 @@
     drawMiniIcon(ctx, iconKey, icX, icY, iconSz);
 
     // 数值文字展示
+    const showPlus = !!o.plusBadge && (!App.Config || !App.Config.isAdEnabled || App.Config.isAdEnabled());
     ctx.fillStyle = o.color || '#fef3c7';
     ctx.font = `bold ${o.fontSize || 11}px "PingFang SC", "Microsoft YaHei", sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    const resMaxW = Math.max(16, w - iconSz - (o.plusBadge ? 24 : 8));
+    const resMaxW = Math.max(16, w - iconSz - (showPlus ? 24 : 8));
     ctx.fillText(text, x + iconSz + 2, y + h / 2 + 0.5, resMaxW);
 
     // 可选右侧快捷加号按钮徽标（与胶囊右半圆同心 + 纯矢量十字绘制，确保内外圆与加号 100% 绝对居中！）
-    if (o.plusBadge) {
+    if (showPlus) {
       const pr = Math.max(5.5, r - 4);
       const px = x + w - r;
       const py = y + h / 2;
@@ -903,7 +936,7 @@
     ctx.restore();
 
     if (onClick) addHit(x, y, w, h, onClick);
-    if (o.onPlusClick && !o.plusDisabled) {
+    if (showPlus && o.onPlusClick && !o.plusDisabled) {
       addHit(x + w - 26, y - 2, 28, h + 4, o.onPlusClick);
     }
   }
@@ -1290,7 +1323,7 @@
     ctx.textAlign = 'left';
     ctx.fillStyle = '#78350f';
     ctx.font = '11px "PingFang SC", sans-serif';
-    ctx.fillText('注：元宝仅能通过铜钱换算或天命轮盘低几率产出；10元宝起可在【元宝商店】购置传世精品！', px + 20, py + ph - 28);
+    ctx.fillText('注：元宝仅能通过铜钱换算或天命轮盘低几率产出', px + 20, py + ph - 28);
     ctx.restore();
 
     if (App.Main && App.Main.getScene && App.Main.getScene() !== 'ingotShop') {
@@ -1305,6 +1338,462 @@
       r: 8, bg: '#574c43', border: '#d6be92', fontSize: 12.5,
     }, closeExchangeModal);
     drawCloseButton(ctx, px + pw - 42, py + 10, 30, closeExchangeModal);
+  }
+
+  const EQUIP_SLOT_LABELS = {
+    weapon: '神兵', armor: '战甲', helm: '头盔', jade: '宝玉', book: '兵书', mount: '战马',
+    beast_claw: '兽爪', beast_scale: '兽鳞', beast_horn: '兽角', beast_core: '兽核',
+  };
+
+  function resolveRewardCardMeta(r) {
+    const C = App.Config || {};
+    const st = (App.State && App.State.get) ? App.State.get() : {};
+    const amt = Math.max(1, Number(r.amount) || 1);
+
+    if (r.type === 'general') {
+      const g = (C.GENERALS && C.GENERALS[r.id]) || {};
+      const rar = g.rarity || 'S';
+      const border = rar === 'SSS' ? '#f43f5e' : (rar === 'SS' ? '#facc15' : (rar === 'S' ? '#c084fc' : (rar === 'A' ? '#38bdf8' : '#4ade80')));
+      const facMap = { wei: '魏国', shu: '蜀国', wu: '吴国', qun: '群雄' };
+      const dupTxt = r.dup
+        ? `已拥有 · 转化将魂${r.dupSoul ? '+' + r.dupSoul : ''}`
+        : (r.dupSoul ? `新将入阵 · 余化将魂+${r.dupSoul}` : '★ 新名将入阵!');
+      return {
+        kind: 'general', id: r.id, amount: amt, badge: amt > 1 ? `×${amt}` : rar,
+        cornerTag: `${rar}将`,
+        name: g.name || r.id,
+        sub: r.dup ? `化魂${r.dupSoul ? '+' + r.dupSoul : ''}` : '★ 新名将入阵',
+        border, col: rar === 'SSS' ? '#fda4af' : '#fef08a',
+        bg: rar === 'SSS' ? 'rgba(76, 18, 28, 0.88)' : 'rgba(48, 24, 10, 0.88)',
+        detail: `【${g.name || r.id}】${facMap[g.faction] || ''}${rar}级名将${g.skillName ? ' · 绝技「' + g.skillName + '」' : ''}（${dupTxt}）`,
+      };
+    }
+
+    if (r.type === 'equip') {
+      const tpl = (C.EQUIP_TEMPLATES && C.EQUIP_TEMPLATES[r.id]) || {};
+      const q = (C.QUALITIES && C.QUALITIES[tpl.quality]) || { name: '精良', color: '#38bdf8' };
+      const slotLbl = EQUIP_SLOT_LABELS[tpl.slot] || (tpl.isBeastEquip ? '兽装' : '装备');
+      const setCfg = tpl.setId && C.EQUIP_SETS && C.EQUIP_SETS[tpl.setId];
+      const isGold = tpl.quality === 'gold';
+      const isPurple = tpl.quality === 'purple';
+      return {
+        kind: 'equip', id: r.id, amount: amt, badge: `×${amt}`,
+        cornerTag: isGold ? (tpl.isBeastEquip ? '金兽装' : '神装') : (tpl.isBeastEquip ? '兽装' : ''),
+        name: tpl.name || r.id,
+        sub: `${q.name}·${slotLbl}`,
+        border: q.color || '#38bdf8',
+        col: isGold ? '#fde047' : (isPurple ? '#f3e8ff' : '#e0f2fe'),
+        bg: isGold ? 'rgba(66, 32, 8, 0.90)' : (isPurple ? 'rgba(46, 18, 62, 0.86)' : 'rgba(20, 32, 48, 0.86)'),
+        detail: `【${tpl.name || r.id}】${q.name}${slotLbl} · 攻+${tpl.atk || 0} 血+${tpl.hp || 0} 防+${tpl.def || 0}${setCfg ? ' · 套装【' + setCfg.name + '】' : ' · 已存入装备仓库'}`,
+      };
+    }
+
+    if (r.type === 'item') {
+      const it = (C.ITEMS && C.ITEMS[r.id]) || {};
+      const q = (C.QUALITIES && C.QUALITIES[it.quality]) || { name: '军需', color: '#38bdf8' };
+      const isGold = it.quality === 'gold';
+      const isPurple = it.quality === 'purple';
+      const catSub = it.cat === 'art_mat' ? '法宝灵材' : (it.kind === 'chest' ? '秘宝军匣' : `${q.name}道具`);
+      return {
+        kind: 'item', id: r.id, amount: amt, badge: `×${amt}`,
+        cornerTag: it.kind === 'chest' ? '可开启' : '',
+        name: it.name || r.id,
+        sub: catSub,
+        border: q.color || '#38bdf8',
+        col: isGold ? '#fde047' : (isPurple ? '#f3e8ff' : '#fef3c7'),
+        bg: isGold ? 'rgba(62, 30, 8, 0.88)' : (isPurple ? 'rgba(42, 18, 56, 0.84)' : 'rgba(26, 15, 8, 0.86)'),
+        detail: `【${it.name || r.id}】${it.desc || '已收入宝物仓库'}（当前库存 ${(App.State && App.State.getItemCount) ? App.State.getItemCount(r.id) : amt} 件）`,
+      };
+    }
+
+    if (r.type === 'beast') {
+      const b = (C.BEASTS && C.BEASTS[r.id]) || {};
+      return {
+        kind: 'beast', id: r.id, amount: amt, badge: amt > 1 ? `×${amt}` : '圣兽',
+        cornerTag: '四象',
+        name: b.name || r.id,
+        sub: '上古守护圣兽',
+        border: '#facc15', col: '#fde047', bg: 'rgba(62, 30, 8, 0.90)',
+        detail: `【${b.name || r.id}】四象守护圣兽已缔结契约入驻神兽殿！`,
+      };
+    }
+
+    const RES_META = {
+      ingot: { icon: 'res_ingot', name: '元宝', sub: '稀世官银', border: '#facc15', col: '#fef08a', glow: 'rgba(250, 204, 21, 0.40)', desc: `可在元宝商店采购传世神装与稀世秘宝（当前持有 ${fmtComma(st.ingot || 0)} 元宝）` },
+      goldRopes: { icon: 'res_rope', goldTag: true, name: '黄金缚兽索', sub: '高率收服圣兽', border: '#facc15', col: '#fde047', glow: 'rgba(250, 204, 21, 0.42)', desc: `讨伐四象圣兽时祭出，捕获成功率大幅翻倍！（当前持有 ${fmtComma(st.goldRopes || 0)} 根）` },
+      ropes: { icon: 'res_rope', name: '缚兽索', sub: '秘境捕兽索', border: '#38bdf8', col: '#bae6fd', glow: 'rgba(56, 189, 248, 0.30)', desc: `可在四象秘境战后收服上古圣兽（当前持有 ${fmtComma(st.ropes || 0)} 根）` },
+      wheelTickets: { icon: 'icon_wheel', name: '天命抽奖券', sub: '轮盘祈愿', border: '#f59e0b', col: '#fde68a', glow: 'rgba(245, 158, 11, 0.34)', desc: `前往天命轮盘免费抽取神将与元宝大奖（当前可用 ${fmtComma(st.wheelTickets || 0)} 次）` },
+      arenaTickets: { icon: 'icon_arena', name: '演武挑战令', sub: '校场争锋', border: '#fb923c', col: '#fed7aa', glow: 'rgba(251, 146, 60, 0.32)', desc: `前往演武校场冲击风云榜名次（当前持有 ${fmtComma(st.arenaTickets || 0)} 枚）` },
+      stamina: { icon: 'res_stamina', name: '粮草体力', sub: '三军军粮', border: '#4ade80', col: '#bbf7d0', glow: 'rgba(74, 222, 128, 0.30)', desc: `用于攻城拔寨与扫荡关卡（当前粮草 ${st.stamina || 0}）` },
+      lordExp: { itemIcon: 'exp_scroll', name: '主公经验', sub: '统帅历练', border: '#38bdf8', col: '#bae6fd', glow: 'rgba(56, 189, 248, 0.30)', desc: `提升主公统帅等级与武将等级上限（当前 Lv.${st.lordLevel || 1}）` },
+      soul: { icon: 'res_soul', name: '聚义将魂', sub: '升星精魄', border: '#c084fc', col: '#f5d0fe', glow: 'rgba(192, 132, 252, 0.34)', desc: `用于名将升星、神兽进化与装备破阶（当前持有 ${fmtComma(st.soul || 0)} 将魂）` },
+      gold: { icon: 'res_gold', name: '铜钱', sub: '九州军饷', border: '#facc15', col: '#fde047', glow: 'rgba(250, 204, 21, 0.32)', desc: `用于武将升级、装备淬火强化与铜钱商城采购（当前持有 ${fmtComma(st.gold || 0)} 铜钱）` },
+      guildCoin: { icon: 'icon_guild', name: '联盟贡献', sub: '同盟军功', border: '#fbbf24', col: '#fde68a', glow: 'rgba(251, 191, 36, 0.30)', desc: `可在联盟宝库兑换珍稀物资（当前贡献 ${fmtComma(st.guildCoin || 0)}）` },
+    };
+    const rm = RES_META[r.type] || { icon: 'res_gold', name: r.type, sub: '战利物资', border: '#d4a34b', col: '#fef3c7', glow: 'rgba(212, 163, 75, 0.28)', desc: '已直接计入主公账下' };
+    return {
+      kind: rm.itemIcon ? 'item' : 'mini',
+      id: rm.itemIcon || rm.icon,
+      goldTag: !!rm.goldTag,
+      glow: rm.glow,
+      amount: amt,
+      badge: `+${fmtComma(amt)}`,
+      cornerTag: rm.goldTag ? '金品' : '',
+      name: rm.name,
+      sub: rm.sub,
+      border: rm.border,
+      col: rm.col,
+      bg: 'rgba(26, 13, 6, 0.86)',
+      detail: `【${rm.name} +${fmtComma(amt)}】${rm.desc}`,
+    };
+  }
+
+  // ★ 全局【开启宝箱 · 战利品道具展示】弹窗（高清展示开出的每件神兵、名将、道具与军饷，支持弹窗内直接连开！）
+  function drawRewardModal(ctx, time) {
+    if (!rewardModalState) return;
+    const W = App.Platform.LOGICAL_W;
+    const H = App.Platform.LOGICAL_H;
+    const m = rewardModalState;
+    const cards = m.rewards.map(resolveRewardCardMeta);
+    if (!cards.length) {
+      rewardModalState = null;
+      return;
+    }
+
+    // 拦截底层点击穿透
+    addHit(0, 0, W, H, () => {}, { silent: true });
+
+    const elapsedMs = Math.max(0, Date.now() - (m.openedAt || 0));
+    const enterT = Math.min(1, elapsedMs / 150);
+    const popScale = 0.92 + 0.08 * (1 - Math.pow(1 - enterT, 3));
+    const t = time != null ? time : ((Date.now() % 100000) / 1000);
+
+    const perPage = 10;
+    const totalPages = Math.max(1, Math.ceil(cards.length / perPage));
+    m.page = Math.max(0, Math.min(totalPages - 1, m.page || 0));
+    const pageStart = m.page * perPage;
+    const pageCards = cards.slice(pageStart, pageStart + perPage);
+    const isTwoRow = pageCards.length > 5;
+
+    const cw = isTwoRow ? 108 : (pageCards.length <= 3 ? 124 : (pageCards.length === 4 ? 116 : 108));
+    const ch = isTwoRow ? 114 : 124;
+    const gapX = 12;
+    const mw = isTwoRow ? 656 : Math.max(556, pageCards.length * cw + (pageCards.length - 1) * gapX + 68);
+    const mh = isTwoRow ? 430 : 318;
+    const mx = Math.round((W - mw) / 2);
+    const my = Math.round((H - mh) / 2) + (isTwoRow ? 8 : 6);
+
+    // 1. 暗幕压暗 + 顶部庆典流金光芒射线
+    ctx.save();
+    ctx.fillStyle = `rgba(10, 5, 2, ${0.52 + 0.26 * enterT})`;
+    ctx.fillRect(0, 0, W, H);
+
+    const glowCx = W / 2;
+    const glowCy = my + 24;
+    const radG = ctx.createRadialGradient(glowCx, glowCy, 12, glowCx, glowCy, 280);
+    radG.addColorStop(0, 'rgba(250, 204, 21, 0.28)');
+    radG.addColorStop(0.55, 'rgba(180, 83, 9, 0.10)');
+    radG.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = radG;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(glowCx, glowCy);
+    ctx.rotate(t * 0.28);
+    ctx.fillStyle = 'rgba(254, 240, 138, 0.055)';
+    for (let i = 0; i < 12; i++) {
+      const a = (Math.PI * 2 * i) / 12;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, 250, a, a + 0.16);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.restore();
+
+    // 2. 主弹窗卷轴黑金面板（带轻盈弹出缩放）
+    ctx.save();
+    if (popScale < 0.999) {
+      ctx.translate(W / 2, H / 2);
+      ctx.scale(popScale, popScale);
+      ctx.translate(-W / 2, -H / 2);
+    }
+
+    drawPanel(ctx, mx, my, mw, mh, { r: 16, bg: '#241107', border: '#facc15', lineWidth: 2.6 });
+    drawPanel(ctx, mx + 7, my + 7, mw - 14, mh - 14, {
+      r: 12, bg: 'rgba(54, 26, 12, 0.72)', border: 'rgba(250, 204, 21, 0.34)', lineWidth: 1.2,
+    });
+
+    // 顶部鎏金牌匾 + 宝箱小图标
+    ctx.save();
+    ctx.font = 'bold 18px "PingFang SC", "STKaiti", serif';
+    const hasHeaderIcon = !!(m.iconId && App.Config && App.Config.ITEMS && App.Config.ITEMS[m.iconId] && App.Sprites && App.Sprites.drawEquipIcon);
+    const titleW = measureTextCached(ctx, m.title);
+    const plaqueW = Math.min(mw - 76, Math.max(296, Math.ceil(titleW + (hasHeaderIcon ? 84 : 52))));
+    const plaqueX = Math.round((W - plaqueW) / 2);
+    const plaqueY = my - 22;
+    const pGrad = ctx.createLinearGradient(plaqueX, plaqueY, plaqueX, plaqueY + 44);
+    pGrad.addColorStop(0, '#c25e0e');
+    pGrad.addColorStop(1, '#7c2d12');
+    roundRect(ctx, plaqueX, plaqueY, plaqueW, 44, 22);
+    ctx.fillStyle = pGrad;
+    ctx.fill();
+    ctx.strokeStyle = '#fef08a';
+    ctx.lineWidth = 2.4;
+    ctx.stroke();
+
+    if (hasHeaderIcon) {
+      const startTx = W / 2 - (30 + 8 + titleW) / 2;
+      App.Sprites.drawEquipIcon(ctx, m.iconId, Math.round(startTx), plaqueY + 7, 30, {
+        radius: 6, border: '#fef08a', lineWidth: 1.5, noAnim: true,
+      });
+      ctx.fillStyle = '#fef08a';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(m.title, Math.round(startTx + 38), plaqueY + 22.5, plaqueW - 56);
+    } else {
+      ctx.fillStyle = '#fef08a';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(m.title, W / 2, plaqueY + 22.5, plaqueW - 28);
+    }
+
+    // 副标题 / 升级喜报提示
+    ctx.textAlign = 'center';
+    if (m.lvInfo && m.lvInfo.leveledUp) {
+      ctx.fillStyle = '#fde047';
+      ctx.font = 'bold 12px "PingFang SC", sans-serif';
+      ctx.fillText(`★ 恭喜主公晋升至 Lv.${m.lvInfo.newLv} · 战利品已悉数入库 ★`, W / 2, my + 34, mw - 40);
+    } else {
+      ctx.fillStyle = '#e7cfa8';
+      ctx.font = '11.5px "PingFang SC", sans-serif';
+      const subHint = m.subtitle || `✦ 共开启获得 ${cards.length} 项战利物资，点击任意图标可查看详情 ✦`;
+      ctx.fillText(subHint, W / 2, my + 34, mw - 40);
+    }
+    ctx.restore();
+
+    // 3. 道具/神装/名将/资源卡片矩阵（单行或双行自动居中排布）
+    if (m.selectedIdx < 0 || m.selectedIdx >= cards.length) m.selectedIdx = 0;
+    const rows = isTwoRow ? [pageCards.slice(0, 5), pageCards.slice(5, 10)] : [pageCards];
+    const baseCy = isTwoRow ? (my + 48) : (my + 52);
+    const iconSz = isTwoRow ? 56 : 62;
+
+    rows.forEach((rowItems, rIdx) => {
+      if (!rowItems.length) return;
+      const rowW = rowItems.length * cw + (rowItems.length - 1) * gapX;
+      let sx = Math.round(W / 2 - rowW / 2);
+      const cy = baseCy + rIdx * (ch + 8);
+
+      rowItems.forEach((c, cIdx) => {
+        const globalIdx = pageStart + rIdx * 5 + cIdx;
+        const isSel = globalIdx === m.selectedIdx;
+
+        drawPanel(ctx, sx, cy, cw, ch, {
+          r: 10,
+          bg: c.bg,
+          border: isSel ? '#ffffff' : c.border,
+          lineWidth: isSel ? 2.6 : 1.8,
+        });
+
+        if (isSel) {
+          ctx.save();
+          roundRect(ctx, sx + 2, cy + 2, cw - 4, ch - 4, 8);
+          ctx.strokeStyle = c.border;
+          ctx.lineWidth = 1.1;
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        const ix = Math.round(sx + (cw - iconSz) / 2);
+        const iy = cy + (isTwoRow ? 8 : 10);
+
+        if (c.kind === 'general' && App.Portraits && App.Portraits.drawGeneralPortrait) {
+          App.Portraits.drawGeneralPortrait(ctx, c.id, ix, iy, iconSz, {
+            radius: 9, border: c.border, lineWidth: 2,
+          });
+        } else if (c.kind === 'beast' && App.Portraits && App.Portraits.drawBeastPortrait) {
+          App.Portraits.drawBeastPortrait(ctx, c.id, ix, iy, iconSz, {
+            radius: 9, border: c.border, lineWidth: 2,
+          });
+        } else if ((c.kind === 'equip' || c.kind === 'item') && App.Sprites && App.Sprites.drawEquipIcon) {
+          App.Sprites.drawEquipIcon(ctx, c.id, ix, iy, iconSz, {
+            radius: 9, border: c.border, lineWidth: 2,
+          });
+        } else {
+          // 资源精绘图标框（与装备/道具图标等大对齐）
+          ctx.save();
+          roundRect(ctx, ix, iy, iconSz, iconSz, 9);
+          ctx.fillStyle = 'rgba(15, 8, 4, 0.85)';
+          ctx.fill();
+          const halo = ctx.createRadialGradient(
+            ix + iconSz / 2, iy + iconSz / 2, 3,
+            ix + iconSz / 2, iy + iconSz / 2, iconSz * 0.54
+          );
+          halo.addColorStop(0, c.glow || 'rgba(250, 204, 21, 0.34)');
+          halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          ctx.fillStyle = halo;
+          ctx.fillRect(ix + 2, iy + 2, iconSz - 4, iconSz - 4);
+          ctx.strokeStyle = c.border;
+          ctx.lineWidth = 1.8;
+          ctx.stroke();
+          const pad = Math.round(iconSz * 0.15);
+          drawMiniIcon(ctx, c.id, ix + pad, iy + pad, iconSz - pad * 2);
+          ctx.restore();
+        }
+
+        // 左上角品阶/特质微章（神装/SSS将/金品）
+        if (c.cornerTag) {
+          ctx.save();
+          ctx.font = 'bold 9px "PingFang SC", sans-serif';
+          const tw = Math.ceil(measureTextCached(ctx, c.cornerTag)) + 8;
+          roundRect(ctx, sx + 5, cy + 5, tw, 14, 4);
+          ctx.fillStyle = 'rgba(24, 10, 4, 0.90)';
+          ctx.fill();
+          ctx.strokeStyle = c.border;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.fillStyle = c.col;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(c.cornerTag, sx + 5 + tw / 2, cy + 12);
+          ctx.restore();
+        }
+
+        // 图标右下角数量 / 数值胶囊角标
+        if (c.badge) {
+          ctx.save();
+          ctx.font = 'bold 10px "PingFang SC", sans-serif';
+          const bw = Math.min(cw - 12, Math.max(24, Math.ceil(measureTextCached(ctx, c.badge)) + 10));
+          const bx = ix + iconSz - bw + 3;
+          const by = iy + iconSz - 15;
+          roundRect(ctx, bx, by, bw, 15, 5);
+          ctx.fillStyle = 'rgba(18, 8, 3, 0.92)';
+          ctx.fill();
+          ctx.strokeStyle = c.border;
+          ctx.lineWidth = 1.1;
+          ctx.stroke();
+          ctx.fillStyle = '#fef08a';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(c.badge, bx + bw / 2, by + 8, bw - 4);
+          ctx.restore();
+        }
+
+        // 道具/装备全名 + 品质部位副标
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = c.col;
+        ctx.font = `bold ${isTwoRow ? 11.5 : 12}px "PingFang SC", sans-serif`;
+        ctx.fillText(c.name, sx + cw / 2, cy + (isTwoRow ? 81 : 90), cw - 10);
+
+        ctx.fillStyle = '#cbb89d';
+        ctx.font = `${isTwoRow ? 9.8 : 10.5}px "PingFang SC", sans-serif`;
+        ctx.fillText(c.sub, sx + cw / 2, cy + (isTwoRow ? 99 : 109), cw - 10);
+        ctx.restore();
+
+        addHit(sx, cy, cw, ch, () => {
+          m.selectedIdx = globalIdx;
+          notifyUiDirty();
+        });
+
+        sx += cw + gapX;
+      });
+    });
+
+    // 4. 选中宝物详情预览条
+    const selCard = cards[m.selectedIdx] || cards[0];
+    const detailY = isTwoRow ? (my + 292) : (my + 186);
+    const detailH = isTwoRow ? 30 : 32;
+    drawPanel(ctx, mx + 24, detailY, mw - 48, detailH, {
+      r: 8, bg: 'rgba(18, 8, 3, 0.78)', border: 'rgba(212, 163, 75, 0.52)', lineWidth: 1.1,
+    });
+    if (selCard) {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fde68a';
+      ctx.font = '11.5px "PingFang SC", sans-serif';
+      ctx.fillText(selCard.detail, W / 2, detailY + detailH / 2 + 0.5, mw - 68);
+      ctx.restore();
+    }
+
+    // 5. 底部快捷连开与确认按钮栏
+    const btnY = my + mh - (isTwoRow ? 54 : 56);
+    const btnH = isTwoRow ? 40 : 42;
+    const remainCnt = (m.chestId && App.State && App.State.getItemCount) ? App.State.getItemCount(m.chestId) : 0;
+    const grantedChestReward = (!m.chestId && App.Config && App.Config.ITEMS && App.State && App.State.getItemCount)
+      ? m.rewards.find((r) => r.type === 'item' && App.Config.ITEMS[r.id] && App.Config.ITEMS[r.id].kind === 'chest' && App.State.getItemCount(r.id) > 0)
+      : null;
+    const hasEquipDrop = m.rewards.some((r) => r.type === 'equip');
+    const canJumpWarehouseEquip = remainCnt <= 0 && !grantedChestReward && hasEquipDrop
+      && App.Main && App.Main.getScene && App.Main.getScene() === 'warehouse'
+      && App.Scenes && App.Scenes.warehouse && typeof App.Scenes.warehouse.focusTab === 'function';
+
+    if (remainCnt >= 2) {
+      const batchN = Math.min(10, remainCnt);
+      const b1W = 158, b2W = 166, b3W = 144, bGap = 12;
+      const startBx = Math.round(W / 2 - (b1W + b2W + b3W + bGap * 2) / 2);
+      drawButton(ctx, startBx, btnY, b1W, btnH, `再开 1 个 (剩${remainCnt})`, {
+        r: 10, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 12.5,
+      }, () => { App.State.useOrOpenItem(m.chestId, 1); });
+      drawButton(ctx, startBx + b1W + bGap, btnY, b2W, btnH, `⚡ 连开 ×${batchN}`, {
+        r: 10, grad: ['#ea580c', '#9a3412'], border: '#fef08a', fontSize: 13,
+      }, () => { App.State.useOrOpenItem(m.chestId, batchN); });
+      drawButton(ctx, startBx + b1W + b2W + bGap * 2, btnY, b3W, btnH, '收下宝物', {
+        r: 10, grad: ['#b91c1c', '#7f1d1d'], border: '#fde68a', fontSize: 13.5,
+      }, closeRewardModal);
+    } else if (remainCnt === 1) {
+      const b1W = 186, b2W = 156, bGap = 16;
+      const startBx = Math.round(W / 2 - (b1W + b2W + bGap) / 2);
+      drawButton(ctx, startBx, btnY, b1W, btnH, '再开最后 1 个', {
+        r: 10, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 13,
+      }, () => { App.State.useOrOpenItem(m.chestId, 1); });
+      drawButton(ctx, startBx + b1W + bGap, btnY, b2W, btnH, '收下宝物', {
+        r: 10, grad: ['#b91c1c', '#7f1d1d'], border: '#fde68a', fontSize: 13.5,
+      }, closeRewardModal);
+    } else if (grantedChestReward) {
+      const gcName = App.Config.ITEMS[grantedChestReward.id].name || '宝箱';
+      const gcCnt = App.State.getItemCount(grantedChestReward.id);
+      const b1W = 212, b2W = 148, bGap = 16;
+      const startBx = Math.round(W / 2 - (b1W + b2W + bGap) / 2);
+      drawButton(ctx, startBx, btnY, b1W, btnH, `立即开启【${gcName.slice(0, 6)}】`, {
+        r: 10, grad: ['#ea580c', '#9a3412'], border: '#fef08a', fontSize: 12.5,
+      }, () => { App.State.useOrOpenItem(grantedChestReward.id, Math.min(10, gcCnt)); });
+      drawButton(ctx, startBx + b1W + bGap, btnY, b2W, btnH, '收下宝物', {
+        r: 10, grad: ['#b91c1c', '#7f1d1d'], border: '#fde68a', fontSize: 13.5,
+      }, closeRewardModal);
+    } else if (canJumpWarehouseEquip) {
+      const b1W = 176, b2W = 162, bGap = 16;
+      const startBx = Math.round(W / 2 - (b1W + b2W + bGap) / 2);
+      drawButton(ctx, startBx, btnY, b1W, btnH, '查看新获装备', {
+        r: 10, grad: ['#16a34a', '#15803d'], border: '#bbf7d0', fontSize: 13,
+      }, () => {
+        const hasBeastEq = m.rewards.every((r) => r.type !== 'equip' || (App.Config.EQUIP_TEMPLATES[r.id] && App.Config.EQUIP_TEMPLATES[r.id].isBeastEquip))
+          && m.rewards.some((r) => r.type === 'equip');
+        closeRewardModal();
+        App.Scenes.warehouse.focusTab(hasBeastEq ? 'beast_eq' : 'all');
+      });
+      drawButton(ctx, startBx + b1W + bGap, btnY, b2W, btnH, '收下宝物', {
+        r: 10, grad: ['#b91c1c', '#7f1d1d'], border: '#fde68a', fontSize: 13.5,
+      }, closeRewardModal);
+    } else {
+      drawButton(ctx, Math.round(W / 2 - 96), btnY, 192, btnH, '收下宝物', {
+        r: 10, grad: ['#b91c1c', '#7f1d1d'], border: '#fde68a', fontSize: 14,
+      }, closeRewardModal);
+    }
+
+    drawCloseButton(ctx, mx + mw - 22, my - 10, 32, closeRewardModal);
+    ctx.restore();
+
+    if (totalPages > 1) {
+      drawSidePageButtons(ctx, m.page, totalPages, (p) => {
+        m.page = p;
+        m.selectedIdx = p * perPage;
+        notifyUiDirty();
+      }, { leftX: Math.max(4, mx - 34), rightX: Math.min(W - 32, mx + mw + 6), cy: my + Math.round(mh * 0.44) });
+    }
   }
 
   /**
@@ -1446,6 +1935,7 @@
     clearHits, addHit, dispatchClick, showToast, updateToasts, drawToasts,
     beginLoading, endLoading, isActionLoading, hasActiveOverlay, drawSpinner, drawPanelLoading, drawLoadingOverlay,
     openExchangeModal, closeExchangeModal, drawExchangeModal,
+    openRewardModal, closeRewardModal, isRewardModalOpen, drawRewardModal,
     measureTextCached, wrapLinesCached,
     roundRect, drawPanel, drawWoodHeader, drawButton, drawAdButton, drawBar, drawWrappedText, drawAdOverlay, drawInputOverlay,
     drawMiniIcon, drawResCapsule, drawSoundToggle, drawVectorGear, drawSettingsGearButton, drawPagination,

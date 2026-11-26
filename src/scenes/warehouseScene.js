@@ -474,7 +474,7 @@
           ctx.font = 'bold 9px "PingFang SC", sans-serif';
           ctx.textAlign = 'center';
           const wearer = eq.equippedByBeast
-            ? (App.Config.BEASTS[eq.equippedByBeast] ? App.Config.BEASTS[eq.equippedByBeast].shortName : '神兽')
+            ? (App.Config.getBeastDisplayName ? App.Config.getBeastDisplayName(eq.equippedByBeast, st.ownedBeasts && st.ownedBeasts[eq.equippedByBeast], true) : (App.Config.BEASTS[eq.equippedByBeast] ? App.Config.BEASTS[eq.equippedByBeast].shortName : '神兽'))
             : (App.Config.GENERALS[eq.equippedBy] ? App.Config.GENERALS[eq.equippedBy].name : '穿戴');
           ctx.fillText(wearer, ix + 29, iy + 14);
         }
@@ -518,7 +518,7 @@
       ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
       ctx.fillText(`品质：${q.name}${tpl.setName ? ` · ${tpl.setName}` : ''}`, 746, 173, 178);
       const wearerDesc = selEq.equippedByBeast
-        ? `穿戴神兽：${App.Config.BEASTS[selEq.equippedByBeast].name}`
+        ? `穿戴神兽：${App.Config.getBeastDisplayName ? App.Config.getBeastDisplayName(selEq.equippedByBeast, st.ownedBeasts && st.ownedBeasts[selEq.equippedByBeast]) : App.Config.BEASTS[selEq.equippedByBeast].name}`
         : (selEq.equippedBy ? `穿戴名将：${App.Config.GENERALS[selEq.equippedBy].name}` : (tpl.isBeastEquip ? '类型：神兽专属装备（闲置）' : '状态：仓库闲置'));
       ctx.fillStyle = (selEq.equippedBy || selEq.equippedByBeast) ? '#15803d' : '#78350f';
       ctx.fillText(wearerDesc, 746, 194, 178);
@@ -588,6 +588,14 @@
     App.Scenes.map.drawBottomNav(ctx, 'warehouse');
   }
 
+  function focusTab(tabId) {
+    filterTab = tabId || 'all';
+    page = 0;
+    itemPage = 0;
+    selectedUid = null;
+    if (App.Main && App.Main.markDirty) App.Main.markDirty();
+  }
+
   App.Scenes = App.Scenes || {};
-  App.Scenes.warehouse = { render };
+  App.Scenes.warehouse = { render, focusTab };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

@@ -375,6 +375,11 @@
   }
 
   function showRewardedAd(scene, rewardText, onSuccessRaw, onCancel) {
+    if (App.Config && App.Config.isAdEnabled && !App.Config.isAdEnabled()) {
+      if (App.UI && App.UI.showToast) App.UI.showToast('当前暂未开放观看广告领奖功能', '#fbbf24');
+      if (onCancel) onCancel();
+      return;
+    }
     const onSuccess = onSuccessRaw;
     const adUnitId = AD_UNIT_IDS[scene] || AD_UNIT_IDS.stamina;
     if (isWechat && typeof wx.createRewardedVideoAd === 'function' && !adUnitId.startsWith('adunit-sixiang-')) {

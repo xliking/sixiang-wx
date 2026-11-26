@@ -125,58 +125,73 @@
     const searchPages = Math.max(1, Math.ceil(searchMatches.length / 3));
     if (searchPage >= searchPages) searchPage = 0;
 
+    const defLocked = !!(info && info.defenseLocked) || !!(st.arenaDefense && st.arenaDefense.generals && st.arenaDefense.generals.length);
     ctx.save();
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fef08a';
-    ctx.font = 'bold 15.5px "PingFang SC", serif';
+    ctx.font = 'bold 15px "PingFang SC", serif';
     if (inSearch) {
-      ctx.fillText(`好友切磋 · 搜索「${searchKeyword}」（${searchMatches.length}人）`, 48, 86, 316);
+      ctx.fillText(`好友切磋 · 搜索「${searchKeyword}」（${searchMatches.length}人）`, 48, 86, 296);
       ctx.fillStyle = '#fde68a';
       ctx.font = '11px "PingFang SC", sans-serif';
-      ctx.fillText('免挑战令 · 不互换天梯名次', 48, 105, 316);
+      ctx.fillText('免挑战令 · 不互换天梯名次', 48, 105, 296);
     } else {
-      ctx.fillText(ranked ? `演武场 · 第 ${info.rank} 名（${info.title}）` : '演武场天梯', 48, 86, 316);
+      ctx.fillText(ranked ? `演武场 · 第 ${info.rank} 名（${info.title}）` : '演武场天梯', 48, 86, 296);
       ctx.fillStyle = '#fde68a';
-      ctx.font = '11px "PingFang SC", sans-serif';
+      ctx.font = '10.8px "PingFang SC", sans-serif';
       ctx.fillText(ranked
-        ? `最高第 ${info.bestRank || info.rank} 名 · ${info.wins}胜${info.losses}负 · 挑战令 ${st.arenaTickets}`
-        : `击败前排对手夺取名次 · 挑战令 ${st.arenaTickets}`, 48, 105, 316);
+        ? `最高第${info.bestRank || info.rank}名 · ${info.wins}胜${info.losses}负 · 令${st.arenaTickets}${defLocked ? ' · 🛡已锁防' : ''}`
+        : `击败前排夺名次 · 挑战令 ${st.arenaTickets}${defLocked ? ' · 🛡已锁防' : ''}`, 48, 105, 296);
     }
     ctx.restore();
 
+    const adsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
     if (inSearch) {
-      App.UI.drawButton(ctx, 374, 74, 92, 32, '← 回天梯', {
-        r: 8, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 11.5,
+      App.UI.drawButton(ctx, adsOn ? 352 : 356, 74, adsOn ? 84 : 98, 32, '← 回天梯', {
+        r: 8, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 11,
       }, () => {
         searchKeyword = '';
         searchMatches = [];
         searchPage = 0;
       });
-      App.UI.drawButton(ctx, 472, 74, 96, 32, '重新搜索', {
-        r: 8, icon: 'search', grad: ['#0369a1', '#0c4a6e'], border: '#bae6fd', fontSize: 11.5, loading, loadingText: '查找中',
+      App.UI.drawButton(ctx, adsOn ? 440 : 462, 74, adsOn ? 86 : 104, 32, '重新搜索', {
+        r: 8, icon: 'search', grad: ['#0369a1', '#0c4a6e'], border: '#bae6fd', fontSize: 11, loading, loadingText: '查找中',
       }, openSearchPrompt);
     } else {
-      App.UI.drawButton(ctx, 374, 74, 94, 32, '搜ID/主公', {
-        r: 8, icon: 'search', grad: ['#0369a1', '#0c4a6e'], border: '#bae6fd', fontSize: 11, loading: false,
+      App.UI.drawButton(ctx, adsOn ? 352 : 356, 74, adsOn ? 84 : 98, 32, '搜ID/主公', {
+        r: 8, icon: 'search', grad: ['#0369a1', '#0c4a6e'], border: '#bae6fd', fontSize: 10.5, loading: false,
       }, openSearchPrompt);
       const claimed = !info || info.rewardClaimed;
-      App.UI.drawButton(ctx, 474, 74, 98, 32, claimed ? '今日已领奖' : '领排名奖励', {
-        r: 8, grad: ['#15803d', '#166534'], border: '#bbf7d0', fontSize: 11, disabled: claimed,
+      App.UI.drawButton(ctx, adsOn ? 440 : 462, 74, adsOn ? 86 : 104, 32, claimed ? '今日已领奖' : '领排名奖励', {
+        r: 8, grad: ['#15803d', '#166534'], border: '#bbf7d0', fontSize: 10.5, disabled: claimed,
       }, () => {
         App.State.arenaReward().then((res) => { if (res.ok && res.arena) info = res.arena; });
       });
     }
 
-    App.UI.drawButton(ctx, 578, 74, 58, 32, '战报', { r: 8, grad: ['#0369a1', '#0c4a6e'], border: '#bae6fd', fontSize: 11.5 }, () => { showLogs = true; });
-    App.UI.drawButton(ctx, 642, 74, 92, 32, '换一批对手', {
-      r: 8, grad: ['#b45309', '#78350f'], border: '#fde047', fontSize: 11, loading: loading && !inSearch, loadingText: '匹配中', disabled: inSearch,
-    }, () => refresh(true));
-
-    App.UI.drawAdButton(ctx, 740, 74, 136, 32, '挑战令 +3', { r: 8, fontSize: 11 }, () => {
-      App.Platform.showRewardedAd('arena_ticket', '观看激励视频，免费领取演武场挑战令 +3！', () => {
-        App.State.claimAd('arena_ticket');
+    App.UI.drawButton(ctx, adsOn ? 530 : 574, 74, adsOn ? 82 : 98, 32, defLocked ? '🛡解锁防守' : '🛡锁防守阵', {
+      r: 8,
+      grad: defLocked ? ['#0f766e', '#115e59'] : ['#6d28d9', '#4c1d95'],
+      border: defLocked ? '#99f6e4' : '#e9d5ff',
+      fontSize: 10.5,
+    }, () => {
+      App.State.saveArenaDefense(defLocked).then((res) => {
+        if (res.ok && res.arena) info = res.arena;
       });
     });
+
+    App.UI.drawButton(ctx, adsOn ? 616 : 680, 74, adsOn ? 50 : 68, 32, '战报', { r: 8, grad: ['#0369a1', '#0c4a6e'], border: '#bae6fd', fontSize: 11 }, () => { showLogs = true; });
+    App.UI.drawButton(ctx, adsOn ? 670 : 756, 74, adsOn ? 76 : 116, 32, '换批对手', {
+      r: 8, grad: ['#b45309', '#78350f'], border: '#fde047', fontSize: 10.5, loading: loading && !inSearch, loadingText: '匹配中', disabled: inSearch,
+    }, () => refresh(true));
+
+    if (adsOn) {
+      App.UI.drawAdButton(ctx, 750, 74, 128, 32, '挑战令 +3', { r: 8, fontSize: 11 }, () => {
+        App.Platform.showRewardedAd('arena_ticket', '观看激励视频，免费领取演武场挑战令 +3！', () => {
+          App.State.claimAd('arena_ticket');
+        });
+      });
+    }
 
     App.UI.drawCloseButton(ctx, W - 74, 74, 32, () => App.Main.goScene('map'));
 
@@ -236,15 +251,16 @@
       });
 
       const bCfg = m.beast && App.Config.BEASTS[m.beast] ? App.Config.BEASTS[m.beast] : null;
+      const oppBeastName = bCfg && App.Config.getBeastDisplayName ? App.Config.getBeastDisplayName(bCfg.id, m.beastAscend || '') : (bCfg ? bCfg.name : '');
       App.UI.drawPanel(ctx, cx + 14, cy + 186, cardW - 28, 56, { r: 8, bg: 'rgba(69, 26, 3, 0.12)', border: 'rgba(154, 52, 18, 0.35)', lineWidth: 1 });
       if (bCfg) {
-        App.Portraits.drawBeastPortrait(ctx, bCfg.id, cx + 22, cy + 193, 42, { radius: 8, border: bCfg.glow, lineWidth: 1.6 });
+        App.Portraits.drawBeastPortrait(ctx, bCfg.id, cx + 22, cy + 193, 42, { radius: 8, border: bCfg.glow, lineWidth: 1.6, raw: true, ascend: m.beastAscend || '' });
       }
       ctx.save();
       ctx.textAlign = 'left';
       ctx.fillStyle = '#7c2d12';
       ctx.font = 'bold 12.5px "PingFang SC", sans-serif';
-      ctx.fillText(bCfg ? `守护神兽：${bCfg.name}` : '守护神兽：暂未任命上阵', cx + (bCfg ? 72 : 24), cy + 219);
+      ctx.fillText(bCfg ? `守护神兽：${oppBeastName}` : '守护神兽：暂未任命上阵', cx + (bCfg ? 72 : 24), cy + 219);
 
       ctx.textAlign = 'center';
       ctx.font = 'bold 12px "PingFang SC", sans-serif';
@@ -258,7 +274,7 @@
       ctx.restore();
 
       const btnTitle = isSpar ? '发起切磋' : (st.arenaTickets > 0 ? '发起挑战' : '挑战令不足');
-      const btnSub = isSpar ? '免费试阵 · 不变天梯名次' : (st.arenaTickets > 0 ? '消耗 1 张挑战令' : '点击上方看广告领取');
+      const btnSub = isSpar ? '免费试阵 · 不变天梯名次' : (st.arenaTickets > 0 ? '消耗 1 张挑战令' : (adsOn ? '点击上方看广告领取' : '每日零点自动补充挑战令'));
       App.UI.drawButton(ctx, cx + 24, cy + 306, cardW - 48, 54, btnTitle, {
         r: 11,
         grad: isSpar ? ['#c2410c', '#7c2d12'] : ['#dc2626', '#991b1b'],

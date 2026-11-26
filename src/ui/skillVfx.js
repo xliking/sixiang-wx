@@ -889,11 +889,19 @@
     huatuo:        { pal: '乾坤', style: 'sacred_heal_burst',   sig: 'huatuo_jade_gourd',      beastSpr: 'beast_sprite_qinglong' },
     zhangjiao:     { pal: '八荒', style: 'petrify_monolith_seal', sig: 'zhangjiao_yellow_talismans', beastSpr: null },
 
-    // 四象神兽全屏圣技
+    // 十二神兽全屏圣技（四象圣兽 / 太古四凶 / 上古创世神兽）
     beast_qinglong:{ pal: '盘龙', style: 'divine_beast_ult', beastId: 'qinglong', beastSpr: 'beast_sprite_qinglong' },
     beast_baihu:   { pal: '太白', style: 'divine_beast_ult', beastId: 'baihu',    beastSpr: 'beast_sprite_baihu' },
     beast_zhuque:  { pal: '朱雀', style: 'divine_beast_ult', beastId: 'zhuque',   beastSpr: 'beast_sprite_zhuque' },
     beast_xuanwu:  { pal: '玄冥', style: 'divine_beast_ult', beastId: 'xuanwu',   beastSpr: 'beast_sprite_xuanwu' },
+    beast_taotie:  { pal: '幽冥', style: 'divine_beast_ult', beastId: 'taotie',   beastSpr: 'beast_sprite_taotie' },
+    beast_qiongqi: { pal: '鬼神', style: 'divine_beast_ult', beastId: 'qiongqi',  beastSpr: 'beast_sprite_qiongqi' },
+    beast_taowu:   { pal: '裂地', style: 'divine_beast_ult', beastId: 'taowu',    beastSpr: 'beast_sprite_taowu' },
+    beast_hundun:  { pal: '惊鸿', style: 'divine_beast_ult', beastId: 'hundun',   beastSpr: 'beast_sprite_hundun' },
+    beast_qilin:   { pal: '霸王', style: 'divine_beast_ult', beastId: 'qilin',    beastSpr: 'beast_sprite_qilin' },
+    beast_baize:   { pal: '青霜', style: 'divine_beast_ult', beastId: 'baize',    beastSpr: 'beast_sprite_baize' },
+    beast_kunpeng: { pal: '奔雷', style: 'divine_beast_ult', beastId: 'kunpeng',  beastSpr: 'beast_sprite_kunpeng' },
+    beast_zhulong: { pal: '焚天', style: 'divine_beast_ult', beastId: 'zhulong',  beastSpr: 'beast_sprite_zhulong' },
   };
 
   const ALL_STYLES = [
@@ -2107,16 +2115,103 @@
 
       case 'divine_beast_ult':
       default: {
-        // ★【四象神兽满气全屏神威圣技】：巨幅四象圣兽真灵腾空镇世 + 全屏连环原画天灾轰炸！
+        // ★【十二神兽满气全屏神威圣技】：巨幅圣兽真灵腾空镇世 + 全屏连环原画天灾轰炸！
         const bid = prof.beastId || 'qinglong';
         const bSpr = prof.beastSpr || ('beast_sprite_' + bid);
+        const isZhulongUlt = bid === 'zhulong';
         const surge = easeOutCubic(p);
-        const bx = (vx + vw * 0.34) + surge * (vw * 0.32) * facing;
-        const by = cy - 42 - Math.sin(p * Math.PI) * 36;
+        const bx = (vx + vw * (isZhulongUlt ? 0.30 : 0.34)) + surge * (vw * (isZhulongUlt ? 0.38 : 0.32)) * facing;
+        const by = cy - (isZhulongUlt ? 54 : 42) - Math.sin(p * Math.PI) * (isZhulongUlt ? 44 : 36);
 
-        // 圣兽真身巨像（后层神辉 + 主体威压）
-        drawSpiritPhantom(ctx, bSpr, bx - 22 * facing, by, 265, facing, alpha * 0.45, pal.c2, 0, 0.55, true);
-        drawSpiritPhantom(ctx, bSpr, bx, by, 248, facing, alpha * 0.96, pal.c2, -0.04, 0.14, false);
+        // ★ 创世烛龙专属【睁目为昼 · 钟山太古日轮开天异象】：天穹昼夜交替 + 竖立创世天目贯射金乌神芒！
+        if (isZhulongUlt) {
+          const eyeOpen = Math.sin(Math.min(1, p * 1.18) * Math.PI);
+          const skyX = vx + vw * 0.50;
+          const skyY = cy - 134;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          // 1. 焚世赤金天穹日冕大光轮
+          const sunR = 148 + surge * 56;
+          const sunG = ctx.createRadialGradient(skyX, skyY, 10, skyX, skyY, sunR);
+          sunG.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
+          sunG.addColorStop(0.28, 'rgba(254, 240, 138, 0.72)');
+          sunG.addColorStop(0.62, 'rgba(234, 88, 12, 0.38)');
+          sunG.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          ctx.globalAlpha = alpha * eyeOpen * 0.88;
+          ctx.fillStyle = sunG;
+          ctx.beginPath();
+          ctx.arc(skyX, skyY, sunR, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 2. 十二道太古日晷金芒贯照全屏沙场
+          ctx.save();
+          ctx.translate(skyX, skyY);
+          ctx.rotate(p * 0.85);
+          for (let r = 0; r < 12; r++) {
+            const ang = (Math.PI * 2 * r) / 12;
+            const rayLen = (r % 2 === 0 ? 260 : 175) * (0.75 + 0.25 * eyeOpen);
+            ctx.fillStyle = r % 2 === 0 ? 'rgba(254, 240, 138, 0.36)' : 'rgba(249, 115, 22, 0.28)';
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(ang - 0.055) * 26, Math.sin(ang - 0.055) * 26);
+            ctx.lineTo(Math.cos(ang) * rayLen, Math.sin(ang) * rayLen);
+            ctx.lineTo(Math.cos(ang + 0.055) * 26, Math.sin(ang + 0.055) * 26);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.strokeStyle = '#fde047';
+          ctx.lineWidth = 2.6;
+          ctx.beginPath();
+          ctx.arc(0, 0, 62 + surge * 10, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+
+          // 3. 苍穹中央“睁目为昼”太古烛龙竖瞳神目
+          const ew = 68 * (0.55 + 0.45 * eyeOpen);
+          const eh = Math.max(3, 28 * eyeOpen);
+          ctx.globalAlpha = alpha * Math.min(1, eyeOpen * 1.15);
+          ctx.fillStyle = '#7c2d12';
+          ctx.strokeStyle = '#fde047';
+          ctx.lineWidth = 2.8;
+          ctx.beginPath();
+          ctx.moveTo(skyX - ew, skyY);
+          ctx.quadraticCurveTo(skyX, skyY - eh * 1.45, skyX + ew, skyY);
+          ctx.quadraticCurveTo(skyX, skyY + eh * 1.45, skyX - ew, skyY);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          // 炽白黄金竖瞳仁
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.ellipse(skyX, skyY, Math.max(3.5, 8.5 * eyeOpen), eh * 0.86, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 1.8;
+          ctx.stroke();
+          ctx.restore();
+        } else if (bid === 'qinglong') {
+          // ★ 苍穹青龙专属【东海九霄苍雷贯空电脉】
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.strokeStyle = '#6ee7b7';
+          ctx.lineWidth = 2.6;
+          ctx.globalAlpha = alpha * Math.sin(p * Math.PI) * 0.78;
+          for (let bolt = 0; bolt < 3; bolt++) {
+            const lx = leftX + (bolt + 0.5) * (spanW / 3);
+            ctx.beginPath();
+            ctx.moveTo(lx - 18, cy - 190);
+            ctx.lineTo(lx + 10, cy - 132);
+            ctx.lineTo(lx - 12, cy - 86);
+            ctx.lineTo(lx + 16, cy - 24);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        // 圣兽真身巨像（烛龙享 312px 创世祖龙巨型法相威压！）
+        const mainSz = isZhulongUlt ? 312 : 248;
+        const backSz = isZhulongUlt ? 336 : 265;
+        drawSpiritPhantom(ctx, bSpr, bx - 24 * facing, by, backSz, facing, alpha * (isZhulongUlt ? 0.58 : 0.45), isZhulongUlt ? '#fde047' : pal.c2, 0, 0.55, true);
+        drawSpiritPhantom(ctx, bSpr, bx, by, mainSz, facing, alpha * 0.98, pal.c2, isZhulongUlt ? -0.06 : -0.04, 0.14, false);
 
         const cfgMap = {
           qinglong: { p1: 'vfx_dragon_slash', p2: 'vfx_thunder', tint: null },
@@ -2130,20 +2225,21 @@
           qilin:    { p1: 'vfx_holy_heal',    p2: 'vfx_fire', tint: '#facc15' },
           baize:    { p1: 'vfx_ice',          p2: 'vfx_holy_heal', tint: '#67e8f9' },
           kunpeng:  { p1: 'vfx_water_tsunami',p2: 'vfx_thunder', tint: '#60a5fa' },
-          zhulong:  { p1: 'vfx_fire',         p2: 'vfx_dragon_slash', tint: '#fbbf24' },
+          zhulong:  { p1: 'vfx_fire',         p2: 'vfx_meteor_starfall', tint: '#fbbf24' },
         };
         const bc = cfgMap[bid] || cfgMap.qinglong;
+        const waveCnt = isZhulongUlt ? 7 : 5;
 
-        for (let i = 0; i < 5; i++) {
-          const ep = (p - i * 0.08) / 0.66;
+        for (let i = 0; i < waveCnt; i++) {
+          const ep = (p - i * (isZhulongUlt ? 0.062 : 0.08)) / 0.66;
           if (ep <= 0 || ep >= 1) continue;
-          const ex = leftX + (i + 0.5) * (spanW / 5);
-          const ey = cy - 44 + ((i % 2) * 24);
+          const ex = leftX + (i + 0.5) * (spanW / waveCnt);
+          const ey = cy - (isZhulongUlt ? 50 : 44) + ((i % 2) * 24);
           const ea = alpha * Math.sin(ep * Math.PI);
-          const esz = 245 * (0.80 + easeOutCubic(ep) * 0.32);
+          const esz = (isZhulongUlt ? 276 : 245) * (0.80 + easeOutCubic(ep) * 0.34);
           drawPaintedBurst(
-            ctx, i % 2 === 0 ? bc.p1 : bc.p2, bc.p1 === 'vfx_tiger_roar' ? 'vfx_crimson_slash' : bc.p1,
-            ex, ey, esz, esz, 0, ea * 0.94, bc.tint, i % 2 === 1, 0.55
+            ctx, i % 2 === 0 ? bc.p1 : bc.p2, isZhulongUlt ? 'vfx_dragon_slash' : (bc.p1 === 'vfx_tiger_roar' ? 'vfx_crimson_slash' : bc.p1),
+            ex, ey, esz, esz, 0, ea * 0.95, bc.tint, i % 2 === 1, isZhulongUlt ? 0.38 : 0.55
           );
         }
         break;

@@ -4,7 +4,10 @@
   let selectedEqUid = null;
   let confirmExileGid = null;
   let showAscendModal = false;
+  let showDetailModal = false;
   let showAll800 = true;
+  let rosterFaction = 'all';
+  let rosterKeyword = '';
   let listPage = 0;
   let bagPage = 0;
   let previewFx = null;
@@ -19,6 +22,7 @@
     previewFx = null;
     confirmExileGid = null;
     showAscendModal = false;
+    showDetailModal = false;
     const p = params || {};
     const st = App.State.get();
     if (p.gid && App.Config.GENERALS[p.gid]) {
@@ -121,15 +125,25 @@
     const curRev = App.State.getRevision ? App.State.getRevision() : 0;
     const hostedMap = st.hostedGenerals || {};
     const deployableIds = App.State.getDeployableGeneralIds ? App.State.getDeployableGeneralIds() : Object.keys(st.ownedGenerals || {});
-    const rosterKey = `${curRev}|${showAll800 ? 1 : 0}|${fullIds.length}`;
+    const rosterKey = `${curRev}|${showAll800 ? 1 : 0}|${rosterFaction}|${rosterKeyword}|${fullIds.length}`;
     if (rosterKey !== cachedRosterKey) {
       cachedRosterKey = rosterKey;
       const coreSet = new Set(coreIds);
       const deploySet = new Set(st.deployIds || []);
       const usableSet = new Set(deployableIds);
-      const basePool = showAll800
+      const rawPool = showAll800
         ? fullIds
         : Array.from(new Set([...deployableIds, ...Object.keys(hostedMap), ...coreIds])).filter((id) => App.Config.GENERALS[id]);
+      const kw = rosterKeyword.toLowerCase();
+      const basePool = rawPool.filter((id) => {
+        const gg = App.Config.GENERALS[id];
+        if (!gg) return false;
+        if (rosterFaction !== 'all' && gg.faction !== rosterFaction) return false;
+        if (kw && String(gg.name || '').toLowerCase().indexOf(kw) < 0 && String(gg.title || '').toLowerCase().indexOf(kw) < 0 && String(gg.skillName || '').toLowerCase().indexOf(kw) < 0) {
+          return false;
+        }
+        return true;
+      });
       cachedSorted = [...basePool].sort((a, b) => {
         // ★ 已编入出战阵容的将领始终排在最上方，其次已拥有/已租用佣将，再其次佣馆托管将领！
         const da = deploySet.has(a) ? 1 : 0;
@@ -149,25 +163,72 @@
       });
     }
     const sorted = cachedSorted;
-    if (!selectedGid || !App.Config.GENERALS[selectedGid]) selectedGid = sorted[0];
+    if ((!selectedGid || !App.Config.GENERALS[selectedGid]) && sorted.length) selectedGid = sorted[0];
+    else if (sorted.length && sorted.indexOf(selectedGid) < 0) selectedGid = sorted[0];
+    if (!selectedGid || !App.Config.GENERALS[selectedGid]) selectedGid = coreIds[0] || fullIds[0];
 
-    // 左侧：名将分页列表（全量收录 800 位独立立绘名将与守将！满高铺展至 y=532）
+    // 左侧：名将分页列表（全量收录 800 位独立立绘名将与守将！支持阵营筛选 + 搜将）
     App.UI.drawPanel(ctx, 14, 58, 220, 474, { r: 12, bg: '#f4e6c4', border: '#7c4a21', lineWidth: 2 });
     ctx.save();
     ctx.fillStyle = '#451a03';
-    ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
+    ctx.font = 'bold 11px "PingFang SC", sans-serif';
     ctx.textAlign = 'left';
     const totalOwnedCnt = Object.keys(st.ownedGenerals || {}).length + Object.keys(hostedMap).length;
-    ctx.fillText(`聚义 ${totalOwnedCnt}/${fullIds.length}将 · 阵${st.deployIds.length}/5`, 22, 80);
+    ctx.fillText(`聚义 ${totalOwnedCnt}/${fullIds.length}将 · 阵${st.deployIds.length}/5`, 22, 79);
     ctx.restore();
-    App.UI.drawButton(ctx, 174, 65, 52, 20, showAll800 ? '全图鉴' : '仅核心', {
+    App.UI.drawButton(ctx, 174, 64, 52, 20, showAll800 ? '全图鉴' : '仅核心', {
       r: 5, bg: showAll800 ? '#15803d' : '#78350f', border: '#fef08a', fontSize: 9.5,
     }, () => { showAll800 = !showAll800; listPage = 0; });
 
-    const perPage = 9;
+    // 阵营快筛胶囊 + 搜将按钮
+    [
+      { id: 'all', t: '全' },
+      { id: 'wei', t: '魏' },
+      { id: 'shu', t: '蜀' },
+      { id: 'wu', t: '吴' },
+      { id: 'qun', t: '群' },
+    ].forEach((fc, fi) => {
+      const on = rosterFaction === fc.id;
+      App.UI.drawButton(ctx, 20 + fi * 30, 88, 28, 19, fc.t, {
+        r: 5,
+        bg: on ? '#9a3412' : '#d6be8f',
+        border: on ? '#fde047' : '#854d0e',
+        color: on ? '#fef08a' : '#451a03',
+        fontSize: 9.5,
+      }, () => { rosterFaction = fc.id; listPage = 0; });
+    });
+    App.UI.drawButton(ctx, 172, 88, 54, 19, rosterKeyword ? '✕清除' : '搜名将', {
+      r: 5,
+      bg: rosterKeyword ? '#dc2626' : '#0369a1',
+      border: '#fef08a',
+      fontSize: 9.5,
+    }, () => {
+      if (rosterKeyword) {
+        rosterKeyword = '';
+        listPage = 0;
+        return;
+      }
+      App.Platform.promptText('输入名将姓名、称号或绝技名关键字：', (txt) => {
+        rosterKeyword = String(txt || '').trim().slice(0, 10);
+        listPage = 0;
+      }, { maxLength: 10, defaultValue: '' });
+    });
+
+    const perPage = 8;
     const maxPage = Math.max(0, Math.ceil(sorted.length / perPage) - 1);
     listPage = Math.min(listPage, maxPage);
     const slice = sorted.slice(listPage * perPage, listPage * perPage + perPage);
+
+    if (!slice.length) {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#78350f';
+      ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
+      ctx.fillText('未找到匹配名将', 124, 268);
+      ctx.font = '10px "PingFang SC", sans-serif';
+      ctx.fillText('点击右上【✕清除】或切换阵营', 124, 290);
+      ctx.restore();
+    }
 
     slice.forEach((gid, idx) => {
       const g = App.Config.GENERALS[gid];
@@ -178,7 +239,7 @@
       const ascTag = effNode && effNode.ascend === 'xian' ? '[神]' : (effNode && effNode.ascend === 'mo' ? '[魔]' : '');
       const deployed = st.deployIds.includes(gid);
       const isSel = gid === selectedGid;
-      const y = 92 + idx * 43;
+      const y = 113 + idx * 45;
 
       App.UI.drawButton(ctx, 22, y, 204, 36, '', {
         r: 16,
@@ -420,17 +481,28 @@
     const lvDesc = owned
       ? `Lv.${owned.lv}/${absMaxLv}·${owned.star}★${effAscInfo ? '·' + effAscInfo.shortTag : ''}`
       : (rented ? `佣·Lv.${rented.lv}·${rented.star}★` : (hosted ? `托管·Lv.${hosted.lv}·${hosted.star}★` : '未招降'));
-    ctx.fillText(`战力：${stats.power} (${lvDesc})`, 534, 138, 176);
+    ctx.fillText(`战力：${stats.power} (${lvDesc})`, 534, 138, 108);
     ctx.restore();
 
-    App.UI.drawButton(ctx, 718, 122, 80, 23, '⚔ 兵刃演示', {
-      r: 6, grad: activeWeaponVfx ? ['#7e22ce', '#4c1d95'] : ['#57534e', '#292524'], border: activeWeaponVfx ? '#f5d0fe' : '#fde68a', fontSize: 10,
+    const heroBonds = App.Config.getGeneralBonds ? App.Config.getGeneralBonds(selectedGid, st.deployIds) : [];
+    const hasActiveHeroBond = heroBonds.some((b) => b.active);
+    App.UI.drawButton(ctx, 648, 122, 76, 23, hasActiveHeroBond ? '★羁绊详情' : '属性·羁绊', {
+      r: 6,
+      grad: hasActiveHeroBond ? ['#0284c7', '#0c4a6e'] : ['#0f766e', '#115e59'],
+      border: hasActiveHeroBond ? '#fde047' : '#99f6e4',
+      fontSize: 9.5,
+    }, () => {
+      showDetailModal = true;
+    });
+
+    App.UI.drawButton(ctx, 728, 122, 76, 23, '⚔ 兵刃演示', {
+      r: 6, grad: activeWeaponVfx ? ['#7e22ce', '#4c1d95'] : ['#57534e', '#292524'], border: activeWeaponVfx ? '#f5d0fe' : '#fde68a', fontSize: 9.5,
     }, () => {
       launchWeaponPreview(selectedGid);
     });
 
-    App.UI.drawButton(ctx, 804, 122, 80, 23, '✦ 绝技演示', {
-      r: 6, grad: ['#b45309', '#78350f'], border: '#fef08a', fontSize: 10,
+    App.UI.drawButton(ctx, 808, 122, 76, 23, '✦ 绝技演示', {
+      r: 6, grad: ['#b45309', '#78350f'], border: '#fef08a', fontSize: 9.5,
     }, () => {
       launchSkillPreview(selectedGid);
     });
@@ -566,10 +638,26 @@
     ctx.save();
     ctx.fillStyle = '#fef08a';
     ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
-    ctx.fillText(`快捷穿戴 (${unequipped.length}件闲置 · 点击一键穿戴)`, 368, 270, 360);
+    ctx.fillText(`快捷穿戴 (${unequipped.length}件闲置 · 点击穿戴)`, 368, 270, 312);
     ctx.restore();
 
-    App.UI.drawButton(ctx, 842, 255, 84, 22, '去军备仓库', {
+    App.UI.drawButton(ctx, 688, 255, 84, 22, '⚡ 一键穿装', {
+      r: 5, grad: ['#16a34a', '#15803d'], border: '#fef08a', fontSize: 10,
+      disabled: !owned || App.State.isBusy(),
+    }, () => {
+      if (!owned) return;
+      App.State.autoEquipGeneral(selectedGid);
+    });
+
+    App.UI.drawButton(ctx, 776, 255, 58, 22, '全卸', {
+      r: 5, bg: '#57534e', border: '#d6d3d1', fontSize: 10,
+      disabled: !owned || !eqListWorn.length || App.State.isBusy(),
+    }, () => {
+      if (!owned) return;
+      App.State.unequipAllGeneral(selectedGid).then((res) => { if (res.ok) selectedEqUid = null; });
+    });
+
+    App.UI.drawButton(ctx, 840, 255, 86, 22, '去军备仓库', {
       r: 5, grad: ['#b45309', '#78350f'], border: '#fde68a', fontSize: 10,
     }, () => App.Main.goScene('warehouse'));
 
@@ -1004,6 +1092,159 @@
     if (showAscendModal && selectedGid) {
       drawAscendModal(ctx, W, H, st, selectedGid);
     }
+    if (showDetailModal && selectedGid) {
+      drawDetailBondModal(ctx, W, H, st, selectedGid, stats);
+    }
+  }
+
+  function drawDetailBondModal(ctx, W, H, st, gid, stats) {
+    const g = App.Config.GENERALS[gid];
+    if (!g || !stats) { showDetailModal = false; return; }
+    App.UI.addHit(0, 0, W, H, () => { showDetailModal = false; });
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 5, 3, 0.80)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+
+    const mw = 780, mh = 436;
+    const mx = Math.round((W - mw) / 2), my = Math.round((H - mh) / 2) + 8;
+    App.UI.drawPanel(ctx, mx, my, mw, mh, { r: 15, bg: '#221208', border: '#facc15', lineWidth: 2.4 });
+    App.UI.addHit(mx, my, mw, mh, () => {});
+    App.UI.drawWoodHeader(ctx, mx + 12, my + 10, mw - 24, 40);
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 16.5px "PingFang SC", serif';
+    ctx.fillText(`✦ ${g.name}（${g.title}）· 十维属性与宿命羁绊谱 ✦`, W / 2, my + 30);
+    ctx.restore();
+
+    App.UI.drawButton(ctx, mx + mw - 88, my + 15, 68, 29, '✕ 关闭', {
+      r: 7, grad: ['#dc2626', '#991b1b'], border: '#fef08a', fontSize: 11.5,
+    }, () => { showDetailModal = false; });
+
+    // 左侧：十维高阶战斗属性与阵营/兵种法则
+    const lx = mx + 16, ly = my + 58, lw = 338, lh = mh - 72;
+    App.UI.drawPanel(ctx, lx, ly, lw, lh, { r: 10, bg: 'rgba(15, 8, 4, 0.78)', border: '#b45309', lineWidth: 1.4 });
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 13px "PingFang SC", serif';
+    ctx.fillText('⚔ 十维战斗属性总览', lx + 14, ly + 24);
+
+    const rows = [
+      ['总气血', `${stats.hp} (基础${stats.baseHp}+${stats.bonusHp})`],
+      ['总武力', `${stats.atk} (基础${stats.baseAtk}+${stats.bonusAtk})`],
+      ['总防御', `${stats.def} (基础${stats.baseDef}+${stats.bonusDef})`],
+      ['暴击率', `${+(stats.crit * 100).toFixed(1)}%`],
+      ['暴击伤害', `+${Math.round((1.5 + (stats.critDmg || 0)) * 100)}%`],
+      ['嗜血汲取', `${+((stats.lifesteal || 0) * 100).toFixed(1)}%`],
+      ['伤害减免', `${+((stats.dmgReduce || 0) * 100).toFixed(1)}%`],
+      ['绝技增伤', `+${+((stats.skillDmgPct || 0) * 100).toFixed(1)}%`],
+      ['攻速加成', `+${+((stats.spdPct || 0) * 100).toFixed(1)}%`],
+      ['开局怒气', `${25 + (stats.initRage || 0)} / 100`],
+    ];
+    rows.forEach((r, idx) => {
+      const col = idx % 2, row = Math.floor(idx / 2);
+      const rx0 = lx + 14 + col * 160, ry0 = ly + 48 + row * 32;
+      ctx.fillStyle = '#fed7aa';
+      ctx.font = '11px "PingFang SC", sans-serif';
+      ctx.fillText(r[0], rx0, ry0);
+      ctx.fillStyle = '#fefce8';
+      ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
+      ctx.fillText(r[1], rx0, ry0 + 15, 152);
+    });
+
+    const facObj = App.Config.FACTIONS[st.factionId] || {};
+    ctx.fillStyle = 'rgba(180, 83, 9, 0.25)';
+    App.UI.roundRect(ctx, lx + 12, ly + 216, lw - 24, 134, 8);
+    ctx.fill();
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
+    ctx.fillText(`主公阵营【${facObj.name || '群雄'}】被动：`, lx + 20, ly + 236);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '10.5px "PingFang SC", sans-serif';
+    ctx.fillText(facObj.passiveDesc || '乱世雄主 · 全军增益', lx + 20, ly + 255, lw - 40);
+
+    ctx.fillStyle = '#67e8f9';
+    ctx.font = 'bold 11px "PingFang SC", sans-serif';
+    ctx.fillText('兵种相克法则（克制增伤 +20%）：', lx + 20, ly + 282);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '10.5px "PingFang SC", sans-serif';
+    ctx.fillText('步枪克铁骑  ▶  铁骑克弓策  ▶  弓策克步枪', lx + 20, ly + 300, lw - 40);
+
+    const bInfo = stats.boundBeastId && App.Config.BEASTS[stats.boundBeastId] ? App.Config.BEASTS[stats.boundBeastId] : null;
+    const bOwned = stats.boundBeastId && st.ownedBeasts ? st.ownedBeasts[stats.boundBeastId] : null;
+    const bDispName = bInfo && App.Config.getBeastDisplayName ? App.Config.getBeastDisplayName(stats.boundBeastId, bOwned) : (bInfo ? bInfo.name : '');
+    ctx.fillStyle = stats.beastFavored ? '#4ade80' : '#fde68a';
+    ctx.fillText(
+      bInfo
+        ? `契约神兽：${bDispName}${stats.beastFavored ? '（★本命兵种契合+20%！）' : ''}`
+        : '契约神兽：未缔结（前往四象兽栏可缔结契约）',
+      lx + 20, ly + 328, lw - 40
+    );
+    ctx.restore();
+
+    // 右侧：全军阵营共鸣 + 名将宿命羁绊列表
+    const rx = lx + lw + 12, ry = ly, rw = mw - lw - 44, rh = lh;
+    App.UI.drawPanel(ctx, rx, ry, rw, rh, { r: 10, bg: 'rgba(15, 8, 4, 0.78)', border: '#b45309', lineWidth: 1.4 });
+    const lb = App.State.getLineupBondSummary ? App.State.getLineupBondSummary() : { activeFaction: null, activeBonds: [] };
+    const bonds = App.Config.getGeneralBonds ? App.Config.getGeneralBonds(gid, st.deployIds) : [];
+
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 13px "PingFang SC", serif';
+    ctx.fillText('✦ 阵营共鸣 & 名将宿命羁绊（同上阵生效）', rx + 14, ry + 24);
+
+    App.UI.drawPanel(ctx, rx + 12, ry + 36, rw - 24, 52, {
+      r: 8,
+      bg: lb.activeFaction ? 'rgba(20, 83, 45, 0.45)' : 'rgba(68, 64, 60, 0.35)',
+      border: lb.activeFaction ? '#4ade80' : '#78716c',
+      lineWidth: 1.3,
+    });
+    ctx.fillStyle = lb.activeFaction ? '#86efac' : '#fde68a';
+    ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
+    ctx.fillText(
+      lb.activeFaction ? `★ 已激活阵营共鸣：【${lb.activeFaction.name || lb.activeFaction.label}】（${lb.activeFaction.desc || ''}）` : '阵营共鸣未激活（上阵 3/4/5 名同阵营或魏蜀吴群各1名激活）',
+      rx + 22, ry + 56, rw - 44
+    );
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '10px "PingFang SC", sans-serif';
+    ctx.fillText('同阵营3/4/5将享最高+20%攻血防；四海归心（四阵营齐聚）享全属性+12%与暴击免伤！', rx + 22, ry + 75, rw - 44);
+
+    if (!bonds.length) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fed7aa';
+      ctx.font = 'bold 12.5px "PingFang SC", sans-serif';
+      ctx.fillText(`【${g.name}】暂无专属人物宿命羁绊，可享受全军阵营共鸣加成！`, rx + rw / 2, ry + 188, rw - 40);
+      if (lb.activeBonds && lb.activeBonds.length) {
+        ctx.fillStyle = '#86efac';
+        ctx.font = '11.5px "PingFang SC", sans-serif';
+        ctx.fillText(`当前队伍已激活：${lb.activeBonds.map((b) => '【' + b.name + '】').join(' ')}`, rx + rw / 2, ry + 218, rw - 40);
+      }
+    } else {
+      bonds.slice(0, 4).forEach((bd, bi) => {
+        const by = ry + 98 + bi * 64;
+        App.UI.drawPanel(ctx, rx + 12, by, rw - 24, 56, {
+          r: 8,
+          bg: bd.active ? 'rgba(180, 83, 9, 0.38)' : 'rgba(30, 20, 14, 0.72)',
+          border: bd.active ? '#fde047' : '#6b4423',
+          lineWidth: bd.active ? 1.8 : 1.1,
+        });
+        const names = (bd.generals || []).map((id) => (App.Config.GENERALS[id] && App.Config.GENERALS[id].name) || id).join(' · ');
+        ctx.fillStyle = bd.active ? '#fef08a' : '#e2e8f0';
+        ctx.font = 'bold 12px "PingFang SC", sans-serif';
+        const needCnt = bd.need || bd.minCount || 0;
+        const needTxt = needCnt && needCnt < (bd.generals || []).length ? `（任上${needCnt}人）` : '';
+        ctx.fillText(`${bd.active ? '★ [已激活] ' : '◇ '}${bd.name}${needTxt}：${names}`, rx + 20, by + 21, rw - 40);
+        ctx.fillStyle = bd.active ? '#86efac' : '#a8a29e';
+        ctx.font = '10.5px "PingFang SC", sans-serif';
+        ctx.fillText(`加成：${bd.desc || ''}`, rx + 20, by + 42, rw - 40);
+      });
+    }
+    ctx.restore();
   }
 
   function drawAscendModal(ctx, W, H, st, gid) {

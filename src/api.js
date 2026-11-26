@@ -25,6 +25,17 @@
   let online = false;
   let loginPromise = null;
   let loginError = '';
+  let visSyncBound = false;
+
+  function syncAdSwitch(res) {
+    if (res && typeof res.adEnabled === 'boolean' && App.Config && App.Config.setAdEnabled) {
+      const prev = App.Config.isAdEnabled();
+      App.Config.setAdEnabled(res.adEnabled);
+      if (prev !== res.adEnabled && App.Main && typeof App.Main.markDirty === 'function') {
+        App.Main.markDirty(400);
+      }
+    }
+  }
 
   let mails = [];
   let activities = [];
@@ -151,6 +162,7 @@
     online = true;
     loginError = '';
     if (!deferApply) {
+      syncAdSwitch(res);
       App.State.applyServerSave(res.save, res.saveVersion);
       App.State.setProfile(res.profile);
     }
@@ -250,6 +262,7 @@
   async function refreshActivities() {
     const res = await request('/api/activity/active', 'GET');
     if (!res || !res.ok) return;
+    syncAdSwitch(res);
     activities = res.activities || [];
     const boosts = { exp: 1, drop: 1, stamina: 1 };
     activities.forEach((a) => {
@@ -399,8 +412,15 @@
     App.Assets.applyManifest(absoluteBase(assetMan.base), assetMan.assets);
     if (!loginRes) return false;
     if (!loginRes.alreadyLoggedIn) {
+      syncAdSwitch(loginRes);
       App.State.applyServerSave(loginRes.save, loginRes.saveVersion);
       App.State.setProfile(loginRes.profile);
+    }
+    if (!visSyncBound && App.Platform && typeof App.Platform.onVisibilityChange === 'function') {
+      visSyncBound = true;
+      App.Platform.onVisibilityChange((vis) => {
+        if (vis && token) refreshActivities();
+      });
     }
     refreshActivities();
     refreshMails();

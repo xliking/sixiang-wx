@@ -146,12 +146,6 @@
         ctx.restore();
       }
     });
-    ctx.save();
-    ctx.textAlign = 'right';
-    ctx.fillStyle = App.API.isOnline() ? '#86efac' : '#fca5a5';
-    ctx.font = '11px "PingFang SC", sans-serif';
-    ctx.fillText(App.API.isOnline() ? '● 已连接服务器' : '● 离线（联网后可收发）', W - 82, 93);
-    ctx.restore();
     App.UI.drawCloseButton(ctx, W - 66, 73, 32, () => App.Main.goScene('map'));
   }
 

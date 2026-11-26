@@ -191,32 +191,35 @@
     });
 
     // 右侧快捷操作 + 右上角 ✕ 关闭按钮
-    App.UI.drawButton(ctx, W - 420, 73, 68, 28, '货币互转', {
+    const adsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
+    App.UI.drawButton(ctx, adsOn ? (W - 420) : (W - 324), 73, 68, 28, '货币互转', {
       r: 7, grad: ['#ca8a04', '#854d0e'], border: '#fef08a', fontSize: 10,
     }, () => {
       if (App.UI && App.UI.openExchangeModal) App.UI.openExchangeModal();
     });
 
-    App.UI.drawButton(ctx, W - 348, 73, 72, 28, '铜钱集市', {
+    App.UI.drawButton(ctx, adsOn ? (W - 348) : (W - 250), 73, 72, 28, '铜钱集市', {
       r: 7, bg: '#3b1c5a', border: '#c084fc', fontSize: 10,
     }, () => App.Main.goScene('shop'));
 
     const refCost = App.State.INGOT_SHOP_REFRESH_COST;
-    App.UI.drawButton(ctx, W - 272, 73, 88, 28, `刷新(${refCost}元宝)`, {
+    App.UI.drawButton(ctx, adsOn ? (W - 272) : (W - 172), 73, 88, 28, `刷新(${refCost}元宝)`, {
       r: 7, grad: ['#7e22ce', '#4c1d95'], border: '#f5d0fe', fontSize: 10,
     }, () => {
       pageIdx = 0;
       App.State.refreshIngotShop(false);
     });
 
-    App.UI.drawAdButton(ctx, W - 180, 73, 98, 28, '免费刷SSS神将', {
-      r: 7, fontSize: 9.5,
-    }, () => {
-      App.Platform.showRewardedAd('stamina', '观看激励视频，免费刷新元宝商店并必出 SSS 至尊神将与传世至宝！', () => {
-        pageIdx = 0;
-        App.State.refreshIngotShop(true);
+    if (adsOn) {
+      App.UI.drawAdButton(ctx, W - 180, 73, 98, 28, '免费刷SSS神将', {
+        r: 7, fontSize: 9.5,
+      }, () => {
+        App.Platform.showRewardedAd('stamina', '观看激励视频，免费刷新元宝商店并必出 SSS 至尊神将与传世至宝！', () => {
+          pageIdx = 0;
+          App.State.refreshIngotShop(true);
+        });
       });
-    });
+    }
 
     App.UI.drawCloseButton(ctx, W - 74, 71, 32, () => App.Main.goScene('map'));
 

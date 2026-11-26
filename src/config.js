@@ -7,13 +7,13 @@
    * 这里只有空容器和展示用的计算函数。容器对象始终是同一个引用，加载时就地填充。
    */
   const C = {
-    PARAMS: {}, DIFFICULTY: {}, SHOP: {}, INGOT_SHOP: {}, AD_REWARDS: {}, SPECIAL: {}, WAVES: {}, FORGE: {}, ARTIFACTS: {}, DEMONS: {}, TROOP_CAMP: {}, TOWER: {}, CHALLENGES: {}, MARKET: {}, HIRE: {}, ASCENSION: {}, PATROL: {},
+    PARAMS: {}, DIFFICULTY: {}, SHOP: {}, INGOT_SHOP: {}, AD_REWARDS: {}, SPECIAL: {}, WAVES: {}, FORGE: {}, ARTIFACTS: {}, DEMONS: {}, TROOP_CAMP: {}, TOWER: {}, CHALLENGES: {}, MARKET: {}, HIRE: {}, ASCENSION: {}, PATROL: {}, BONDS: {},
     FEATURES: {}, ARENA: {}, WORLD_BOSS: {}, GUILD: {}, INVITE: {}, SUBSCRIBE: {},
     GENERALS: {}, BEASTS: {}, EQUIP_TEMPLATES: {}, EQUIP_SETS: {}, QUALITIES: {}, ITEMS: {}, FACTIONS: {},
     UNIT_TYPES: {}, RECRUIT_TIERS: {}, BIOMES: {}, CHAPTERS: {}, STAGES: {}, DUNGEONS: {},
     GENERAL_IDS: [], CORE_GENERAL_IDS: [], ALL_GENERAL_IDS: [], BEAST_IDS: [], EQUIP_IDS: [], EQUIP_SET_IDS: [], ITEM_IDS: [], ARTIFACT_IDS: [],
     FACTION_LIST: [], ITEM_CATEGORIES: [], EQUIP_SLOTS: [], BEAST_EQUIP_SLOTS: [], WHEEL_PRIZES: [], SHOP_SUPPLY: [], INGOT_SHOP_SUPPLY: [],
-    SIGN_REWARDS: [], DAILY_QUESTS: [], QUEST_BOXES: [], ACHIEVEMENTS: [], DISASTERS: [], TROOP_CARDS: [],
+    SIGN_REWARDS: [], DAILY_QUESTS: [], WEEKLY_QUESTS: [], QUEST_BOXES: [], ACHIEVEMENTS: [], DISASTERS: [], TROOP_CARDS: [],
     TOTAL_STAGES: 0, TOTAL_CHAPTERS: 0, STAGES_PER_CHAPTER: 8,
     loaded: false,
   };
@@ -262,6 +262,7 @@
     fillObj(C.TOWER, cfg.tower);
     fillObj(C.CHALLENGES, cfg.challenges);
     fillObj(C.PATROL, cfg.patrol);
+    fillObj(C.BONDS, cfg.bonds);
     fillObj(C.MARKET, cfg.market);
     fillObj(C.HIRE, cfg.hire);
     fillObj(C.ASCENSION, cfg.ascension);
@@ -294,6 +295,7 @@
     fillArr(C.INGOT_SHOP_SUPPLY, cfg.ingotShopSupply);
     fillArr(C.SIGN_REWARDS, cfg.signRewards);
     fillArr(C.DAILY_QUESTS, cfg.dailyQuests);
+    fillArr(C.WEEKLY_QUESTS, cfg.weeklyQuests);
     fillArr(C.QUEST_BOXES, cfg.questBoxes);
     fillArr(C.ACHIEVEMENTS, cfg.achievements);
     fillArr(C.DISASTERS, cfg.disasters);
@@ -599,6 +601,9 @@
     chaos: 'bg_battle_mystic',
     xian: 'bg_battle_snow',
     mo: 'bg_battle_mystic',
+    beast_xian: 'bg_battle_snow',
+    beast_mo: 'bg_battle_mystic',
+    bazhen: 'bg_battle_mystic',
   };
   const BIOME_DEFAULT_BG = {
     snow: 'bg_battle_snow',
@@ -714,6 +719,8 @@
     passHpMult: 1.34, passAtkMult: 1.22, escortHpMult: 1.34, escortAtkMult: 1.22,
     chaosHpMult: 1.42, chaosAtkMult: 1.28, treasuryHpMult: 1.40, treasuryAtkMult: 1.24,
     xianHpMult: 1.40, xianAtkMult: 1.26, moHpMult: 1.40, moAtkMult: 1.30,
+    beastXianHpMult: 1.45, beastXianAtkMult: 1.30, beastMoHpMult: 1.45, beastMoAtkMult: 1.34,
+    bazhenHpMult: 1.35, bazhenAtkMult: 1.24,
     arenaHpMult: 1.30, arenaAtkMult: 1.22,
   };
 
@@ -738,6 +745,9 @@
       treasury: [d.treasuryHpMult || 1, d.treasuryAtkMult || 1],
       xian: [d.xianHpMult || 1.40, d.xianAtkMult || 1.26],
       mo: [d.moHpMult || 1.40, d.moAtkMult || 1.30],
+      beast_xian: [d.beastXianHpMult || d.xianHpMult || 1.45, d.beastXianAtkMult || d.xianAtkMult || 1.30],
+      beast_mo: [d.beastMoHpMult || d.moHpMult || 1.45, d.beastMoAtkMult || d.moAtkMult || 1.34],
+      bazhen: [d.bazhenHpMult || 1.35, d.bazhenAtkMult || 1.24],
     };
     const [mHp, mAtk] = map[mode] || [1, 1];
     const order = (level && level.order) || 10;
@@ -819,6 +829,68 @@
     return base;
   }
 
+  /** 解析神兽神/魔飞升属性与外观信息（与服务端 GameRules.beastAscendStatMult / beastAscendBondMult / ascendTacBonus 完全一致） */
+  function getBeastAscendInfo(bNode) {
+    const path = bNode && (typeof bNode === 'string' ? bNode : bNode.ascend);
+    if (path !== 'xian' && path !== 'mo') return null;
+    const ac = C.ASCENSION || {};
+    const tier = Math.max(1, Number(bNode && bNode.ascendTier) || 1);
+    const t = tier - 1;
+    const statMult = 1 + (ac.beastBaseStatMult != null ? ac.beastBaseStatMult : 0.40) + t * (ac.beastTierStatStep != null ? ac.beastTierStatStep : 0.16);
+    const bondMult = 1 + (ac.beastBondAscendBase != null ? ac.beastBondAscendBase : 0.15) + t * (ac.beastBondAscendStep != null ? ac.beastBondAscendStep : 0.05);
+    const sub = (ac[path]) || {};
+    const defTitles = path === 'xian'
+      ? ['真神', '天神', '神王', '太古神尊', '九天神帝']
+      : ['真魔', '玄魔', '天魔', '混世魔尊', '九幽魔帝'];
+    const titles = Array.isArray(sub.titles) && sub.titles.length ? sub.titles : defTitles;
+    const realm = titles[Math.min(titles.length - 1, t)] || `${tier}重`;
+    const isXian = path === 'xian';
+    return {
+      path,
+      tier,
+      realm,
+      title: `${isXian ? '神' : '魔'}·${realm}`,
+      shortTag: `${isXian ? '神' : '魔'}${tier}重`,
+      glyph: isXian ? '神' : '魔',
+      prefix: isXian ? '神.' : '魔.',
+      color: isXian ? '#67e8f9' : '#f472b6',
+      bg: isXian ? '#0f4c5c' : '#581c87',
+      border: isXian ? '#fde047' : '#fb7185',
+      statMult,
+      bondMult,
+      crit: isXian ? ((sub.critBase ?? 0.05) + t * (sub.critStep ?? 0.015)) : ((sub.critBase ?? 0.07) + t * (sub.critStep ?? 0.02)),
+      critDmg: isXian ? 0 : ((sub.critDmgBase ?? 0.20) + t * (sub.critDmgStep ?? 0.07)),
+      lifesteal: isXian ? 0 : ((sub.lifestealBase ?? 0.08) + t * (sub.lifestealStep ?? 0.03)),
+      dmgReduce: isXian ? ((sub.dmgReduceBase ?? 0.09) + t * (sub.dmgReduceStep ?? 0.03)) : 0,
+      skillDmgPct: isXian ? ((sub.skillDmgBase ?? 0.14) + t * (sub.skillDmgStep ?? 0.05)) : 0,
+      spdPct: isXian ? 0 : ((sub.spdPctBase ?? 0.11) + t * (sub.spdPctStep ?? 0.04)),
+      initRage: isXian ? ((sub.initRageBase ?? 16) + t * (sub.initRageStep ?? 5)) : 0,
+      auraVfx: {
+        setId: isXian ? '__beast_ascend_xian__' : '__beast_ascend_mo__',
+        name: isXian ? `九天神罡·${realm}` : `九幽魔煞·${realm}`,
+        quality: 'gold',
+        count: 4,
+        total: 4,
+        auraVfx: isXian ? 'jade_vitality' : 'shadow_phantom',
+        auraName: isXian ? `九天神罡·${realm}` : `九幽魔煞·${realm}`,
+        auraColor: isXian ? '#67e8f9' : '#e879f9',
+        auraSubColor: isXian ? '#fef08a' : '#fb7185',
+        auraTex: isXian ? 'vfx_holy_heal' : 'vfx_crimson_slash',
+        vfxTier: tier >= 3 ? 3 : 2,
+      },
+    };
+  }
+
+  /** 获取神兽展示名称：未飞升为 苍穹青龙，化神为 神.苍穹青龙，入魔为 魔.苍穹青龙 */
+  function getBeastDisplayName(bid, bNode, useShort) {
+    const b = (C.BEASTS && C.BEASTS[bid]) || null;
+    const base = b ? (useShort ? (b.shortName || b.name) : b.name) : (bid || '神兽');
+    const asc = bNode && (typeof bNode === 'string' ? bNode : (bNode.ascend || (bNode.ascendInfo && bNode.ascendInfo.path)));
+    if (asc === 'xian') return `神.${base}`;
+    if (asc === 'mo') return `魔.${base}`;
+    return base;
+  }
+
   function getRarityColor(rarity, ascendPath) {
     if (ascendPath === 'xian') return '#67e8f9';
     if (ascendPath === 'mo') return '#f472b6';
@@ -830,12 +902,112 @@
     return '#94a3b8';
   }
 
+  function getDuplicateSoul(gid) {
+    const g = C.GENERALS && C.GENERALS[gid];
+    const rar = g ? (g.rarity || 'B') : 'B';
+    const P = C.PARAMS || {};
+    if (rar === 'SSS') return P.dupSoulSSS || 480;
+    if (rar === 'SS') return P.dupSoulSS || 260;
+    if (rar === 'S') return P.dupSoulS || 130;
+    if (rar === 'A') return P.dupSoulA || 65;
+    return P.dupSoulB || P.duplicateGeneralSoul || 35;
+  }
+
+  /** 计算上阵阵容触发的【阵营共鸣 + 名将宿命羁绊】（与服务端 GameRules.lineupBondBonus 完全一致） */
+  function computeLineupBondBonus(deployIds) {
+    const res = {
+      hpPct: 0, atkPct: 0, defPct: 0, crit: 0,
+      critDmg: 0, lifesteal: 0, dmgReduce: 0, skillDmgPct: 0, spdPct: 0, initRage: 0,
+      activeFaction: null,
+      activeBonds: [],
+    };
+    const depSet = new Set();
+    const facCounts = {};
+    (deployIds || []).forEach((gid) => {
+      const g = C.GENERALS && C.GENERALS[gid];
+      if (!g || depSet.has(gid)) return;
+      depSet.add(gid);
+      if (g.faction) facCounts[g.faction] = (facCounts[g.faction] || 0) + 1;
+    });
+    if (!depSet.size) return res;
+
+    const addNode = (n, full) => {
+      res.hpPct += (full && n.fullHpPct != null) ? n.fullHpPct : (n.hpPct || 0);
+      res.atkPct += (full && n.fullAtkPct != null) ? n.fullAtkPct : (n.atkPct || 0);
+      res.defPct += (full && n.fullDefPct != null) ? n.fullDefPct : (n.defPct || 0);
+      res.crit += (full && n.fullCrit != null) ? n.fullCrit : (n.crit || 0);
+      res.critDmg += (full && n.fullCritDmg != null) ? n.fullCritDmg : (n.critDmg || 0);
+      res.lifesteal += (full && n.fullLifesteal != null) ? n.fullLifesteal : (n.lifesteal || 0);
+      res.dmgReduce += (full && n.fullDmgReduce != null) ? n.fullDmgReduce : (n.dmgReduce || 0);
+      res.skillDmgPct += (full && n.fullSkillDmgPct != null) ? n.fullSkillDmgPct : (n.skillDmgPct || 0);
+      res.spdPct += (full && n.fullSpdPct != null) ? n.fullSpdPct : (n.spdPct || 0);
+      res.initRage += (full && n.fullInitRage != null) ? n.fullInitRage : (n.initRage || 0);
+    };
+
+    const maxSameFac = Math.max(0, ...Object.values(facCounts));
+    const distinctFac = Object.keys(facCounts).length;
+    const bondsCfg = C.BONDS || {};
+    let bestFac = null;
+    let bestSame = 0;
+    let rainbowFac = null;
+    (bondsCfg.factionResonance || []).forEach((fr) => {
+      const sc = fr.sameCount || 0;
+      if (sc > 0 && maxSameFac >= sc && sc > bestSame) {
+        bestSame = sc;
+        bestFac = fr;
+      } else if (!sc && (fr.distinctCount || 0) > 0) {
+        if (depSet.size >= (fr.minDeploy || 5) && distinctFac >= (fr.distinctCount || 4)) {
+          rainbowFac = fr;
+        }
+      }
+    });
+    const actFac = bestFac || rainbowFac;
+    if (actFac) {
+      addNode(actFac, false);
+      res.activeFaction = actFac;
+    }
+
+    (bondsCfg.heroBonds || []).forEach((hb) => {
+      const need = Math.max(2, hb.need || 2);
+      const hit = (hb.generals || []).filter((gid) => depSet.has(gid)).length;
+      if (hit >= need) {
+        const isFull = (hb.fullNeed || 0) > 0 && hit >= hb.fullNeed;
+        addNode(hb, isFull);
+        res.activeBonds.push(Object.assign({}, hb, { hitCount: hit, isFull }));
+      }
+    });
+    return res;
+  }
+
+  function getGeneralBonds(gid, deployIds) {
+    const depSet = new Set(deployIds || []);
+    return ((C.BONDS && C.BONDS.heroBonds) || [])
+      .filter((hb) => (hb.generals || []).indexOf(gid) >= 0)
+      .map((hb) => {
+        const hit = (hb.generals || []).filter((x) => depSet.has(x)).length;
+        const need = Math.max(2, hb.need || 2);
+        return Object.assign({}, hb, {
+          hitCount: hit,
+          active: hit >= need,
+          isFull: (hb.fullNeed || 0) > 0 && hit >= hb.fullNeed,
+        });
+      });
+  }
+
+  function isAdEnabled() {
+    return !!(C.PARAMS && C.PARAMS.adEnabled);
+  }
+
+  function setAdEnabled(val) {
+    if (C.PARAMS) C.PARAMS.adEnabled = !!val;
+  }
+
   App.Config = Object.assign(C, {
     SET_AURA_META, WEAPON_ATK_META, FOUR_SYMBOL_BEAST_IDS,
-    load, getEquipBonus, getEquipSellPrice, computeSetBonus, resolveSetVfx, resolveWeaponVfx, computeArtifactBonus,
-    getArtifactMaterialProgress, canUnlockArtifact,
+    load, isAdEnabled, setAdEnabled, getEquipBonus, getEquipSellPrice, computeSetBonus, resolveSetVfx, resolveWeaponVfx, computeArtifactBonus,
+    getArtifactMaterialProgress, canUnlockArtifact, getDuplicateSoul, computeLineupBondBonus, getGeneralBonds,
     getTroopCard, getTroopMeta, getGeneralTroopId, getGeneralTroopCard, getGeneralTroopMeta, resolveGeneralCombatProfile,
     getChapterMapTheme, resolveBattleBgKey, getChapterInfo, buildStage, getChapterStages, getBeastUnlockLv, getBeastDungeons,
-    getModeDifficulty, scaleRecommendedPower, getAscendInfo, getRarityLabel, getRarityColor,
+    getModeDifficulty, scaleRecommendedPower, getAscendInfo, getBeastAscendInfo, getBeastDisplayName, getRarityLabel, getRarityColor,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : window);

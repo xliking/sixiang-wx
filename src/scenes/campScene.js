@@ -176,15 +176,29 @@
       });
       ctx.restore();
 
-      // 底部修筑按钮
-      App.UI.drawButton(ctx, x + 8, fy + fch - 50, fcw - 16, 42, maxed ? '已满级' : '修筑升级', {
-        r: 9,
-        grad: ['#b45309', '#78350f'],
-        border: '#fef08a',
-        fontSize: 13,
-        subText: maxed ? undefined : `${cost} 铜钱`,
-        disabled: maxed || App.State.isBusy(),
-      }, () => App.State.upgradeTroop(entry.id));
+      // 底部修筑按钮（支持单次修筑 + 连升5级）
+      if (maxed) {
+        App.UI.drawButton(ctx, x + 8, fy + fch - 50, fcw - 16, 42, '已满级', {
+          r: 9, grad: ['#b45309', '#78350f'], border: '#fef08a', fontSize: 13, disabled: true,
+        }, () => {});
+      } else {
+        App.UI.drawButton(ctx, x + 8, fy + fch - 50, 133, 42, '修筑升级', {
+          r: 9,
+          grad: ['#b45309', '#78350f'],
+          border: '#fef08a',
+          fontSize: 12.5,
+          subText: `${cost} 铜钱`,
+          disabled: App.State.isBusy(),
+        }, () => App.State.upgradeTroop(entry.id, 1));
+        App.UI.drawButton(ctx, x + 145, fy + fch - 50, fcw - 153, 42, '⚡+5级', {
+          r: 9,
+          grad: ['#ea580c', '#9a3412'],
+          border: '#fde68a',
+          fontSize: 12,
+          subText: '连筑省心',
+          disabled: App.State.isBusy(),
+        }, () => App.State.upgradeTroop(entry.id, 5));
+      }
     });
 
     // ================= 下排：5 大主力兵种操练卡（175×212 宽敞卡片） =================
@@ -273,14 +287,28 @@
       });
       ctx.restore();
 
-      App.UI.drawButton(ctx, x + 8, ty + tch - 50, tcw - 16, 42, maxed ? '已满级' : '操练升级', {
-        r: 9,
-        grad: ['#d97706', '#92400e'],
-        border: '#fef08a',
-        fontSize: 13,
-        subText: maxed ? undefined : `${cost} 铜钱`,
-        disabled: maxed || App.State.isBusy(),
-      }, () => App.State.upgradeTroop(card.id));
+      if (maxed) {
+        App.UI.drawButton(ctx, x + 8, ty + tch - 50, tcw - 16, 42, '已满级', {
+          r: 9, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 13, disabled: true,
+        }, () => {});
+      } else {
+        App.UI.drawButton(ctx, x + 8, ty + tch - 50, 101, 42, '操练升级', {
+          r: 9,
+          grad: ['#d97706', '#92400e'],
+          border: '#fef08a',
+          fontSize: 12,
+          subText: `${cost}铜钱`,
+          disabled: App.State.isBusy(),
+        }, () => App.State.upgradeTroop(card.id, 1));
+        App.UI.drawButton(ctx, x + 113, ty + tch - 50, tcw - 121, 42, '⚡+5级', {
+          r: 9,
+          grad: ['#ea580c', '#9a3412'],
+          border: '#fde68a',
+          fontSize: 11.5,
+          subText: '连操',
+          disabled: App.State.isBusy(),
+        }, () => App.State.upgradeTroop(card.id, 5));
+      }
     });
   }
 

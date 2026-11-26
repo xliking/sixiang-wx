@@ -32,12 +32,14 @@
 
   function enter(params) {
     achPage = 0;
+    const adsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
     if (params && params.tab) {
-      curTab = params.tab;
+      curTab = (!adsOn && params.tab === 'supply') ? 'sign' : params.tab;
       return;
     }
     if (App.State.canFreeSignToday()) curTab = 'sign';
     else if (App.State.hasUnclaimedQuestOrBox && App.State.hasUnclaimedQuestOrBox()) curTab = 'quest';
+    else if (App.State.hasUnclaimedWeeklyQuest && App.State.hasUnclaimedWeeklyQuest()) curTab = 'weekly';
     else if (App.State.hasUnclaimedAchievement && App.State.hasUnclaimedAchievement()) curTab = 'achieve';
     else curTab = 'sign';
   }
@@ -170,8 +172,118 @@
     }
   }
 
-  // ==================== 1. 七日庆典（王者荣耀式海报主视觉 + 4上3下压轴大奖卡） ====================
+  // ==================== 1. 七日庆典 & 常驻轮回签到 ====================
   function renderSignTab(ctx, st) {
+    const cyc = App.State.getCycleSignInfo ? App.State.getCycleSignInfo() : null;
+    if ((st.signDays || 0) >= 7 && cyc && cyc.isCycle) {
+      drawStageBanner(ctx, {
+        title: '常驻庆典 · 七日轮回犒赏',
+        tag: `累计登录 ${cyc.totalDays} 天`,
+        tagBg: '#15803d',
+        subtitle: '七日卧龙庆典圆满后永久开启轮回犒赏，每满 7 日必得元宝与传世黄金秘宝箱！',
+        grad: ['#1e3a29', '#2b180b', '#1a0c05'],
+        border: '#f59e0b',
+      });
+
+      const hx = STAGE_X, hy = 126, hw = STAGE_W, hh = 98;
+      App.UI.drawPanel(ctx, hx, hy, hw, hh, { r: 11, bg: '#2b160a', border: '#d97706', lineWidth: 1.6 });
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fef08a';
+      ctx.font = 'bold 15px "PingFang SC", serif';
+      ctx.fillText(`✦ 九州常驻军饷 · 当前处于轮回第 ${cyc.cycleDay} / 7 天`, hx + 20, hy + 34);
+      ctx.fillStyle = '#fed7aa';
+      ctx.font = '12px "PingFang SC", sans-serif';
+      ctx.fillText(`随主公等级 Lv.${st.lordLevel || 1} 动态提升铜钱将魂额度，第 7 日固定加赠元宝+3 与黄金宝箱！`, hx + 20, hy + 66, 440);
+      ctx.restore();
+
+      App.UI.drawButton(ctx, hx + 486, hy + 26, 208, 46, cyc.canFree ? `签到领轮回第 ${cyc.cycleDay} 天` : '✓ 今日军饷已签到', {
+        r: 9,
+        grad: cyc.canFree ? ['#16a34a', '#15803d'] : ['#44403c', '#292524'],
+        border: cyc.canFree ? '#fef08a' : '#78716c',
+        fontSize: 13.5,
+        disabled: !cyc.canFree,
+      }, () => App.State.claimSignDay(false));
+
+      cyc.days.forEach((d, idx) => {
+        const isRow2 = idx >= 4;
+        const isDay7 = idx === 6;
+        const gap = 10;
+        let cx, cy, cw, ch;
+        if (!isRow2) {
+          cw = Math.floor((STAGE_W - gap * 3) / 4);
+          ch = 138;
+          cx = STAGE_X + idx * (cw + gap);
+          cy = 232;
+        } else if (!isDay7) {
+          cw = 171;
+          ch = 140;
+          cx = STAGE_X + (idx - 4) * (cw + gap);
+          cy = 380;
+        } else {
+          cx = STAGE_X + 2 * (171 + gap);
+          cy = 380;
+          cw = STAGE_W - 2 * (171 + gap);
+          ch = 140;
+        }
+        const claimed = d.day < cyc.cycleDay || (d.day === cyc.cycleDay && !cyc.canFree);
+        const isNext = d.day === cyc.cycleDay && cyc.canFree;
+
+        App.UI.drawPanel(ctx, cx, cy, cw, ch, {
+          r: 11,
+          bg: claimed ? '#163c24' : (isNext ? '#7c2d12' : (isDay7 ? '#3f1a09' : '#26130a')),
+          border: isNext ? '#fde047' : (claimed ? '#4ade80' : (isDay7 ? '#f59e0b' : '#78350f')),
+          lineWidth: isNext ? 2.4 : (isDay7 ? 1.9 : 1.3),
+        });
+
+        ctx.save();
+        App.UI.roundRect(ctx, cx + 2, cy + 2, cw - 4, 26, 9);
+        ctx.fillStyle = claimed ? 'rgba(20, 83, 45, 0.72)' : (isNext || isDay7 ? 'rgba(180, 83, 9, 0.55)' : 'rgba(69, 26, 3, 0.55)');
+        ctx.fill();
+        ctx.textAlign = isDay7 ? 'left' : 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fef08a';
+        ctx.font = 'bold 12px "PingFang SC", sans-serif';
+        ctx.fillText(`轮回第 ${d.day} 天 · ${d.tag}`, isDay7 ? cx + 14 : cx + cw / 2, cy + 15);
+        ctx.restore();
+
+        const iconSpec = isDay7 ? { ingot: 3 } : { gold: d.gold };
+        if (isDay7) {
+          drawRewardIcon(ctx, iconSpec, cx + 18, cy + 40, 76);
+          ctx.save();
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#fde047';
+          ctx.font = 'bold 14.5px "PingFang SC", serif';
+          ctx.fillText(d.label, cx + 108, cy + 54);
+          ctx.fillStyle = '#fffbeb';
+          ctx.font = '11.5px "PingFang SC", sans-serif';
+          ctx.fillText(`另赐：铜钱+${d.gold} · 将魂+${d.soul}`, cx + 108, cy + 80);
+          ctx.fillStyle = claimed ? '#86efac' : (isNext ? '#fde047' : '#fed7aa');
+          ctx.font = 'bold 11.5px "PingFang SC", sans-serif';
+          ctx.fillText(claimed ? '✓ 本轮已领取' : (isNext ? '● 点击立即领取周满大奖！' : '满 7 日即可领取'), cx + 108, cy + 108);
+          ctx.restore();
+        } else {
+          drawRewardIcon(ctx, iconSpec, cx + Math.floor((cw - 50) / 2), cy + 34, 50);
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#fffbeb';
+          ctx.font = 'bold 10.5px "PingFang SC", sans-serif';
+          ctx.fillText(d.label, cx + cw / 2, cy + 98, cw - 12);
+          ctx.fillStyle = claimed ? '#86efac' : (isNext ? '#fde047' : '#fed7aa');
+          ctx.font = '10px "PingFang SC", sans-serif';
+          ctx.fillText(claimed ? '✓ 本轮已领' : `钱+${d.gold} 魂+${d.soul}`, cx + cw / 2, cy + 118, cw - 12);
+          ctx.restore();
+        }
+        if (isNext) {
+          App.UI.addHit(cx, cy, cw, ch, () => App.State.claimSignDay(false));
+        }
+      });
+      return;
+    }
+
     drawStageBanner(ctx, {
       title: '七日庆典 · 卧龙出山',
       tag: '登录送SSS神将',
@@ -236,17 +348,24 @@
 
     if (signDays < 7) {
       const canFree = App.State.canFreeSignToday();
-      App.UI.drawButton(ctx, hx + 432, hy + 44, 130, 40, canFree ? `签到领第${signDays + 1}天` : '今日已签到', {
-        r: 8, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 12, disabled: !canFree,
-      }, () => App.State.claimSignDay(false));
+      const adsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
+      if (adsOn) {
+        App.UI.drawButton(ctx, hx + 432, hy + 44, 130, 40, canFree ? `签到领第${signDays + 1}天` : '今日已签到', {
+          r: 8, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 12, disabled: !canFree,
+        }, () => App.State.claimSignDay(false));
 
-      App.UI.drawAdButton(ctx, hx + 570, hy + 44, 132, 40, `提前领第${signDays + 1}天`, {
-        r: 8, fontSize: 11.5,
-      }, () => {
-        App.Platform.showRewardedAd('stamina', `观看激励视频，提前解锁第 ${signDays + 1} 天签到豪礼！`, () => {
-          App.State.claimSignDay(true);
+        App.UI.drawAdButton(ctx, hx + 570, hy + 44, 132, 40, `提前领第${signDays + 1}天`, {
+          r: 8, fontSize: 11.5,
+        }, () => {
+          App.Platform.showRewardedAd('stamina', `观看激励视频，提前解锁第 ${signDays + 1} 天签到豪礼！`, () => {
+            App.State.claimSignDay(true);
+          });
         });
-      });
+      } else {
+        App.UI.drawButton(ctx, hx + 464, hy + 44, 208, 40, canFree ? `签到领第${signDays + 1}天` : '今日已签到', {
+          r: 8, grad: ['#d97706', '#92400e'], border: '#fef08a', fontSize: 13, disabled: !canFree,
+        }, () => App.State.claimSignDay(false));
+      }
     } else {
       ctx.save();
       ctx.textAlign = 'center';
@@ -488,6 +607,90 @@
           const targetScene = q.scene || (q.id === 'enhance_eq' ? 'warehouse' : (q.id === 'arena_pk' ? 'arena' : 'map'));
           App.Main.goScene(targetScene);
         }
+      });
+    });
+  }
+
+  // ==================== 2B. 每周军令（2×3 周常挑战大卡，送元宝与黄金秘宝箱） ====================
+  function renderWeeklyTab(ctx, st) {
+    const wq = st.weeklyProgress || { claimed: {} };
+    const isCurWeek = wq.week === (App.State.getWeekKey ? App.State.getWeekKey() : '');
+    const claimedMap = isCurWeek ? (wq.claimed || {}) : {};
+    const list = (App.State.WEEKLY_QUEST_DEFS || []).slice(0, 6);
+    const anyReady = App.State.hasUnclaimedWeeklyQuest ? App.State.hasUnclaimedWeeklyQuest() : false;
+
+    drawStageBanner(ctx, {
+      title: '每周军令 · 霸业周赏',
+      tag: '周常送元宝',
+      tagBg: '#b45309',
+      subtitle: `每周一零点刷新，完成周常征伐即可免费领取元宝、黄金宝箱与随级军饷！`,
+      grad: ['#4c1d0c', '#2c1207', '#170904'],
+      border: '#f59e0b',
+    });
+
+    if (anyReady) {
+      App.UI.drawButton(ctx, STAGE_X + STAGE_W - 178, STAGE_Y + 12, 124, 30, '一键全领周常', {
+        r: 7, grad: ['#16a34a', '#15803d'], border: '#fef08a', fontSize: 11.5,
+      }, () => App.State.claimWeeklyQuest('all'));
+    }
+
+    list.forEach((q, idx) => {
+      const col = idx % 2;
+      const row = Math.floor(idx / 2);
+      const w = 352;
+      const h = 122;
+      const x = STAGE_X + col * (w + 10);
+      const y = 130 + row * 130;
+      const key = q.questKey || q.id;
+      const cur = Math.min(q.target || 1, isCurWeek ? (wq[key] || 0) : 0);
+      const target = Math.max(1, q.target || 1);
+      const claimed = !!claimedMap[q.id];
+      const done = cur >= target;
+      const rw = App.State.getWeeklyQuestReward ? App.State.getWeeklyQuestReward(q) : q;
+
+      App.UI.drawPanel(ctx, x, y, w, h, {
+        r: 10,
+        bg: claimed ? '#20150f' : (done ? '#4d220c' : '#2d170c'),
+        border: done && !claimed ? '#fde047' : '#9a5b25',
+        lineWidth: done && !claimed ? 2.0 : 1.3,
+      });
+
+      drawRewardIcon(ctx, q.itemId ? { itemId: q.itemId, itemCount: q.itemCount || 1 } : { ingot: rw.ingot || 2 }, x + 12, y + 32, 56);
+
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fef08a';
+      ctx.font = 'bold 13.5px "PingFang SC", serif';
+      ctx.fillText(q.title || '周常军令', x + 78, y + 24, 186);
+
+      App.UI.drawBar(ctx, x + 78, y + 44, 142, 11, cur / target, done ? '#22c55e' : '#f59e0b', '#140904');
+      ctx.fillStyle = '#fffbeb';
+      ctx.font = 'bold 9.5px "PingFang SC", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${cur} / ${target}`, x + 149, y + 50);
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#fde047';
+      ctx.font = 'bold 11px "PingFang SC", sans-serif';
+      const ingotStr = rw.ingot ? `元宝+${rw.ingot} · ` : '';
+      ctx.fillText(`${ingotStr}钱+${rw.gold} · 魂+${rw.soul}`, x + 78, y + 76, 192);
+
+      const itemObj = q.itemId && App.Config.ITEMS[q.itemId];
+      ctx.fillStyle = '#fed7aa';
+      ctx.font = '10.5px "PingFang SC", sans-serif';
+      ctx.fillText(itemObj ? `附赠：${itemObj.name} ×${q.itemCount || 1}` : `主公经验 +${rw.exp || 0}`, x + 78, y + 98, 192);
+      ctx.restore();
+
+      App.UI.drawButton(ctx, x + w - 80, y + 40, 68, 42, claimed ? '✓ 已领' : (done ? '领周赏' : '前往'), {
+        r: 8,
+        grad: done && !claimed ? ['#16a34a', '#15803d'] : ['#78350f', '#451a03'],
+        border: '#fef08a',
+        fontSize: 11.5,
+        disabled: claimed,
+      }, () => {
+        if (done) App.State.claimWeeklyQuest(q.id);
+        else App.Main.goScene(q.scene || 'map');
       });
     });
   }
@@ -913,12 +1116,15 @@
     ctx.fillText('盛世庆典 · 厚赏三军', sideX + sideW / 2, sideY + 37);
     ctx.restore();
 
+    const adsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
+    if (!adsOn && curTab === 'supply') curTab = 'sign';
+
     const menus = [
       {
         id: 'sign',
-        title: '七日庆典',
-        sub: '七日登录送诸葛亮',
-        badge: '送SSS',
+        title: (st.signDays || 0) >= 7 ? '轮回签到' : '七日庆典',
+        sub: (st.signDays || 0) >= 7 ? '常驻军饷 · 满七送宝' : '七日登录送诸葛亮',
+        badge: (st.signDays || 0) >= 7 ? '常驻' : '送SSS',
         badgeCol: '#dc2626',
         dot: App.State.canFreeSignToday(),
       },
@@ -931,13 +1137,21 @@
         dot: !!(App.State.hasUnclaimedQuestOrBox && App.State.hasUnclaimedQuestOrBox()),
       },
       {
+        id: 'weekly',
+        title: '每周军令',
+        sub: '周常挑战 · 送元宝',
+        badge: '周常',
+        badgeCol: '#b45309',
+        dot: !!(App.State.hasUnclaimedWeeklyQuest && App.State.hasUnclaimedWeeklyQuest()),
+      },
+      ...(adsOn ? [{
         id: 'supply',
         title: '军需补给',
         sub: '免费铜钱 · 粮草将魂',
         badge: '免费',
         badgeCol: '#16a34a',
         dot: hasSupplyQuota(st),
-      },
+      }] : []),
       {
         id: 'achieve',
         title: '霸业成就',
@@ -958,9 +1172,9 @@
 
     menus.forEach((m, i) => {
       const mx = sideX + 8;
-      const my = sideY + 58 + i * 78;
+      const my = sideY + 55 + i * 66;
       const mw = sideW - 16;
-      const mh = 70;
+      const mh = 60;
       const active = curTab === m.id;
 
       ctx.save();
@@ -982,7 +1196,7 @@
 
       // 选中态左侧王者荣耀式亮金竖向流光条 + 右侧指向小三角
       if (active) {
-        App.UI.roundRect(ctx, mx + 2, my + 8, 4.5, mh - 16, 2.2);
+        App.UI.roundRect(ctx, mx + 2, my + 7, 4.5, mh - 14, 2.2);
         ctx.fillStyle = '#fde047';
         ctx.fill();
 
@@ -998,24 +1212,24 @@
       ctx.font = 'bold 9.5px "PingFang SC", sans-serif';
       const bw = ctx.measureText(m.badge).width + 10;
       const bx = mx + mw - bw - 10;
-      const by = my + 9;
-      App.UI.roundRect(ctx, bx, by, bw, 16, 5);
+      const by = my + 8;
+      App.UI.roundRect(ctx, bx, by, bw, 15, 5);
       ctx.fillStyle = m.badgeCol;
       ctx.fill();
       ctx.fillStyle = '#fffbeb';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(m.badge, bx + bw / 2, by + 8.5);
+      ctx.fillText(m.badge, bx + bw / 2, by + 8);
 
       // 主标题与副标题
       ctx.textAlign = 'left';
       ctx.fillStyle = active ? '#fffbeb' : '#fde68a';
-      ctx.font = `bold ${active ? 15 : 14}px "PingFang SC", sans-serif`;
-      ctx.fillText(m.title, mx + 14, my + 24);
+      ctx.font = `bold ${active ? 14.5 : 13.5}px "PingFang SC", sans-serif`;
+      ctx.fillText(m.title, mx + 14, my + 21);
 
       ctx.fillStyle = active ? '#fde68a' : '#a89070';
-      ctx.font = '10.5px "PingFang SC", sans-serif';
-      ctx.fillText(m.sub, mx + 14, my + 49, mw - 26);
+      ctx.font = '10px "PingFang SC", sans-serif';
+      ctx.fillText(m.sub, mx + 14, my + 43, mw - 24);
       ctx.restore();
 
       if (m.dot) drawRedDot(ctx, mx + mw - 5, my + 6);
@@ -1025,6 +1239,7 @@
 
     // ==================== 右侧具体活动内容舞台 ====================
     if (curTab === 'quest') renderQuestTab(ctx, st);
+    else if (curTab === 'weekly') renderWeeklyTab(ctx, st);
     else if (curTab === 'supply') renderSupplyTab(ctx, st);
     else if (curTab === 'achieve') renderAchieveTab(ctx, st);
     else if (curTab === 'wheel') renderWheelPromoTab(ctx, st);

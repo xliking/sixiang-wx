@@ -226,8 +226,9 @@
       ctx.textBaseline = 'middle';
       ctx.font = 'bold 9.5px "PingFang SC", sans-serif';
       if (owned) {
-        ctx.fillStyle = '#6ee7b7';
-        ctx.fillText(`✓ 已收服 Lv.${owned.lv} · ${owned.star || 1}★`, midX, statusY + 10);
+        const ascPre = owned.ascend === 'xian' ? '神·' : (owned.ascend === 'mo' ? '魔·' : '');
+        ctx.fillStyle = owned.ascend === 'xian' ? '#67e8f9' : (owned.ascend === 'mo' ? '#f472b6' : '#6ee7b7');
+        ctx.fillText(`✓ 已收服 ${ascPre}Lv.${owned.lv} · ${owned.star || 1}★`, midX, statusY + 10);
       } else {
         ctx.fillStyle = cardUnlocked ? '#fde047' : '#cbd5e1';
         ctx.fillText(`捕获率 ${Math.round((bCfg.baseCatchRate || 0.25) * 100)}% (金索翻倍)`, midX, statusY + 10);
@@ -296,8 +297,13 @@
       } else {
         const costSta = App.State.getStaminaCost(d.staminaCost);
         const hasSta = st.stamina >= costSta;
+        const adsOn = !!(App.Config && App.Config.isAdEnabled && App.Config.isAdEnabled());
         const onBeastAct = () => {
           if (!hasSta) {
+            if (!adsOn) {
+              App.UI.showToast('粮草体力不足，请等待恢复或前往军备仓库使用行军粮草丹！', '#fbbf24');
+              return;
+            }
             App.Platform.showRewardedAd('stamina', '观看激励视频，立刻恢复 +15 军粮体力！', () => {
               App.State.claimAd('stamina');
             });
@@ -305,10 +311,10 @@
           }
           App.Main.startBattle('beast', d.id, { level: d });
         };
-        if (hasSta) {
+        if (hasSta || !adsOn) {
           App.UI.drawButton(ctx, cx + 16, cy + 338, cardW - 32, 50, owned ? '再次讨伐 · 升星夺宝' : '讨伐并抓捕', {
             r: 10,
-            grad: [bCfg.color, bCfg.darkColor],
+            grad: ['#f97316', '#7c2d12'],
             border: '#fef08a',
             fontSize: 13,
             subText: `消耗 ${costSta} 粮草体力`,
